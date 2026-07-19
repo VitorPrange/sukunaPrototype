@@ -4,14 +4,7 @@
   "item.sukunaprototype.example_item": "Example Item",
 
   "key.categories.sukunaprototype": "Sukuna Prototype",
-  "key.sukunaprototype.slash.classic": "Slash: Classic",
   "key.sukunaprototype.slash.random": "Slash: Random All",
-  "key.sukunaprototype.slash.void": "Slash: Void",
-  "key.sukunaprototype.slash.blood": "Slash: Blood",
-  "key.sukunaprototype.slash.holy": "Slash: Holy",
-  "key.sukunaprototype.slash.toxic": "Slash: Toxic",
-  "key.sukunaprototype.slash.electric": "Slash: Electric",
-  "key.sukunaprototype.slash.debug": "Slash: Debug Marker",
 
   "sukunaprototype.configuration.title": "Sukuna Prototype Configs",
   "sukunaprototype.configuration.section.sukunaprototype.common.toml": "Sukuna Prototype Configs",
