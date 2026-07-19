@@ -1,4 +1,4 @@
-package com.example.examplemod;
+package com.prang.sukunaprototype;
 
 import java.util.List;
 import java.util.Set;
@@ -33,6 +33,21 @@ public class Config {
     public static final ModConfigSpec.ConfigValue<List<? extends String>> ITEM_STRINGS = BUILDER
             .comment("A list of items to log on common setup.")
             .defineListAllowEmpty("items", List.of("minecraft:iron_ingot"), () -> "", Config::validateItemName);
+
+    // --- Slash VFX tuning ---
+    public static final ModConfigSpec.DoubleValue SLASH_LENGTH = BUILDER
+            .comment("Slash length in blocks (world size). Bigger = longer slash.")
+            .defineInRange("slashLength", 9.0, 1.0, 40.0);
+
+    public static final ModConfigSpec.DoubleValue SLASH_THICKNESS = BUILDER
+            .comment("Slash thickness in blocks (world size). Smaller = thinner slash.")
+            .defineInRange("slashThickness", 0.30, 0.02, 3.0);
+
+    // Per-spawn length randomness: final length = configLength * (1 ± jitter).
+    // 0.0 = always exactly config length; 0.5 = anywhere from half to 1.5x.
+    public static final ModConfigSpec.DoubleValue SLASH_LENGTH_JITTER = BUILDER
+            .comment("Random length variation per slash (0 = none, 0.5 = half to 1.5x). Thickness is unaffected.")
+            .defineInRange("slashLengthJitter", 0.35, 0.0, 1.0);
 
     static final ModConfigSpec SPEC = BUILDER.build();
 

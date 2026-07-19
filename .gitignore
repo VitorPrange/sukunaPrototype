@@ -1,40 +1,35 @@
-### Gradle ###
-.gradle
-build/
-!gradle/wrapper/gradle-wrapper.jar
-!**/src/**/build/
-
-### IntelliJ IDEA ###
-.idea/
-*.iws
-*.iml
-*.ipr
-out/
-!**/src/**/out/
-
-.run/
-
-### Eclipse ###
-.apt_generated
-.classpath
-.eclipse/
-.factorypath
+# Eclipse
+*.pydevproject
 .project
 .settings
-.springBeans
-.sts4-cache
 bin/
-!**/src/**/bin/
 
-### VS Code ###
-.vscode/
+# IntelliJ
+*.iml
+*.ipr
+*.iws
+.idea
 
-### Mac OS ###
-.DS_Store
+# NetBeans
+nbproject/private/
+nbbuild/
+nbdist/
+.nb-gradle/
 
-### Minecraft Modding ###
+# Gradle
+.gradle/
+build/
+
+# Forge / NeoForge MDK
 run/
-!**/src/**/run/
-**/src/generated/**/.cache/
-repo/
-!**/src/**/repo/
+out/
+logs/
+!gradle/wrapper/gradle-wrapper.jar
+
+# OS files
+Thumbs.db
+.DS_Store
+ehthumbs.db
+
+# Local config (contains local paths)
+gradle.properties.local
