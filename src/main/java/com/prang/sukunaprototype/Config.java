@@ -37,11 +37,23 @@ public class Config {
     // --- Slash VFX tuning ---
     public static final ModConfigSpec.DoubleValue SLASH_LENGTH = BUILDER
             .comment("Slash length in blocks (world size). Bigger = longer slash.")
-            .defineInRange("slashLength", 9.0, 1.0, 40.0);
+            .defineInRange("slashLength", 12.0, 1.0, 40.0);
 
     public static final ModConfigSpec.DoubleValue SLASH_THICKNESS = BUILDER
             .comment("Slash thickness in blocks (world size). Smaller = thinner slash.")
-            .defineInRange("slashThickness", 0.30, 0.02, 3.0);
+            .defineInRange("slashThickness", 0.16, 0.02, 3.0);
+
+    // Slash outline rim thickness (blocks). 0 = none. Drawn additive + depth-tested
+    // so it glows in open air but vanishes where the slash enters a block/mob.
+    public static final ModConfigSpec.DoubleValue SLASH_OUTLINE = BUILDER
+            .comment("Slash outline rim thickness in blocks (0 = none). Vibrant additive edge.")
+            .defineInRange("slashOutline", 0.12, 0.0, 1.0);
+
+    // How bright/punchy the outline glow is. Additive, so >1 ramps the rim
+    // up to a hard glowing edge. 1.0 = strong, 2.0+ = blown-out neon.
+    public static final ModConfigSpec.DoubleValue SLASH_OUTLINE_VIBRANCY = BUILDER
+            .comment("Outline glow intensity (additive). Higher = more vibrant neon rim.")
+            .defineInRange("slashOutlineVibrancy", 1.8, 0.2, 3.0);
 
     // Per-spawn length randomness: final length = configLength * (1 ± jitter).
     // 0.0 = always exactly config length; 0.5 = anywhere from half to 1.5x.

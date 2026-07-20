@@ -6,6 +6,7 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.GameRules;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
@@ -145,6 +146,20 @@ public class SukunaPrototypeClient {
         rate = Math.max(1, Math.min(60, rate));
         // ticks per slash = 20 / rate, min 1 tick (20/s ceiling)
         return Math.max(1, Math.round(20f / rate));
+    }
+
+    // Reads an IntegerValue gamerule holding MILLIBLOCKS (×1000) and returns
+    // blocks (value / 1000.0). Prefers the SP server (authoritative, synced by
+    // your /gamerule edits), falls back to the client copy in multiplayer.
+    // Used for live slash thickness / outline so changes apply instantly, no reload.
+    public static double gameruleMilli(GameRules.Key<GameRules.IntegerValue> key, int fallbackMilli) {
+        Minecraft mc = Minecraft.getInstance();
+        try {
+            MinecraftServer srv = mc.getSingleplayerServer();
+            if (srv != null) return srv.getGameRules().getInt(key) / 1000.0;
+            if (mc.level != null) return mc.level.getGameRules().getInt(key) / 1000.0;
+        } catch (Exception ignored) { /* fall back */ }
+        return fallbackMilli / 1000.0;
     }
 
     private static void spawnRandomSlashAtTarget() {

@@ -69,6 +69,15 @@ public class SukunaPrototype {
     public static final GameRules.Key<GameRules.IntegerValue> SLASH_MAX_RATE =
             GameRules.register("slashMaxRate", GameRules.Category.MISC, GameRules.IntegerValue.create(7));
 
+    // Real-time slash thickness in MILLIBLOCKS (×1000). /gamerule slashThickness 80 -> 0.08 blocks,
+    // thinner instantly, even on already-spawned slashes (render() reads this every frame). Lower = thinner.
+    public static final GameRules.Key<GameRules.IntegerValue> SLASH_THICKNESS =
+            GameRules.register("slashThickness", GameRules.Category.MISC, GameRules.IntegerValue.create(160));
+
+    // Real-time outline rim thickness in MILLIBLOCKS (×1000). /gamerule slashOutline 120 -> 0.12 blocks.
+    public static final GameRules.Key<GameRules.IntegerValue> SLASH_OUTLINE =
+            GameRules.register("slashOutline", GameRules.Category.MISC, GameRules.IntegerValue.create(120));
+
     // The constructor for the mod class is the first code that is run when your mod is loaded.
     // FML will recognize some parameter types like IEventBus or ModContainer and pass them in automatically.
     public SukunaPrototype(IEventBus modEventBus, ModContainer modContainer) {

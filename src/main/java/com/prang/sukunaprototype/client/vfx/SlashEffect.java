@@ -1,6 +1,8 @@
 package com.prang.sukunaprototype.client.vfx;
 
 import com.prang.sukunaprototype.Config;
+import com.prang.sukunaprototype.SukunaPrototype;
+import com.prang.sukunaprototype.SukunaPrototypeClient;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -45,9 +47,13 @@ public class SlashEffect extends VFXInstance {
     // away (lower max) instead of shrinking to nothing in your face or ballooning
     // out at range.
     private static final float SIZE_REF_DIST = 12.0f;   // distance (blocks) where scale == 1.0
-    private static final float SIZE_MIN_SCALE = 1.0f;   // closest clamp (up in your face) - >=1 so never shrinks up close
-    private static final float SIZE_MAX_SCALE = 1.6f;   // farthest clamp - lowered so not too thick
-    private static final float OUTLINE_EXTRA = 0.06f;   // outline thickness added on top of blade
+    private static final float SIZE_MIN_SCALE = 0.85f;  // closest clamp (up in your face) - thinned
+    private static final float SIZE_MAX_SCALE = 1.15f;  // farthest clamp - barely thicker, not bloated
+    // Slight 3D tilt of the blade out of the screen plane (radians). This makes the
+    // slash's length run partly along the view axis, so different parts sit at
+    // different depths -> real PARTIAL occlusion when it meshes into a block/mob
+    // (instead of a flat billboard's all-or-nothing depth behaviour).
+    private static final float BLADE_TILT = 0.18f;
     
     // Color scheme
     public static class ColorScheme {
@@ -85,15 +91,18 @@ public class SlashEffect extends VFXInstance {
     private float currentAlpha = 1.0f;
     private float currentScale = 1.0f;
     
-    // Pre-computed parametric offsets along the blade's length + taper widths.
-    // Direction is applied at render time (billboard), so these are scalars, not vectors.
+    // Pre-computed parametric offsets along the blade's length. Direction is
+    // applied at render time (billboard), so these are scalars, not vectors.
+    // Thickness is NOT baked: it's read live from the slashThickness gamerule each
+    // frame in render(), so /gamerule slashThickness updates even spawned slashes.
     private float[] lengthOffsets;
-    private float[] widths;
     
-    // Custom RenderType: POSITION_COLOR (no normal at all, so no directional
-    // diffuse shading), targeting MAIN_TARGET explicitly so it's guaranteed to
-    // be composited to screen. Uses normal alpha blending (not additive) so
-    // full-alpha colors look solid/opaque instead of glowy and see-through.
+    // Two RenderTypes share the blade geometry. BOTH are depth-tested (LEQUAL)
+    // so the slash PUNCTURES into blocks/mobs: the part in front of the geometry
+    // draws, the part behind is hidden (like it went inside).
+    //  - SLASH_RENDER_TYPE (core): normal alpha blend, depth-tested. Solid fill.
+    //  - SLASH_OUTLINE_TYPE (rim): additive (neon glow) + depth-tested, so the
+    //    glow also clips into geometry instead of x-raying through it.
     private static final RenderType SLASH_RENDER_TYPE = RenderType.create(
         "sukunaprototype_slash",
         DefaultVertexFormat.POSITION_COLOR,
@@ -104,6 +113,23 @@ public class SlashEffect extends VFXInstance {
         RenderType.CompositeState.builder()
             .setShaderState(RenderType.POSITION_COLOR_SHADER)
             .setTransparencyState(RenderType.TRANSLUCENT_TRANSPARENCY)
+            .setWriteMaskState(RenderType.COLOR_WRITE)
+            .setCullState(RenderType.NO_CULL)
+            .setDepthTestState(RenderType.LEQUAL_DEPTH_TEST)
+            .setOutputState(RenderType.MAIN_TARGET)
+            .createCompositeState(false)
+    );
+
+    private static final RenderType SLASH_OUTLINE_TYPE = RenderType.create(
+        "sukunaprototype_slash_outline",
+        DefaultVertexFormat.POSITION_COLOR,
+        VertexFormat.Mode.TRIANGLE_STRIP,
+        256,
+        false,
+        true,
+        RenderType.CompositeState.builder()
+            .setShaderState(RenderType.POSITION_COLOR_SHADER)
+            .setTransparencyState(RenderType.LIGHTNING_TRANSPARENCY) // additive glow
             .setWriteMaskState(RenderType.COLOR_WRITE)
             .setCullState(RenderType.NO_CULL)
             .setDepthTestState(RenderType.LEQUAL_DEPTH_TEST)
@@ -152,15 +178,9 @@ public class SlashEffect extends VFXInstance {
     
     private void computeBlade() {
         lengthOffsets = new float[SEGMENTS + 1];
-        widths = new float[SEGMENTS + 1];
-        
         for (int i = 0; i <= SEGMENTS; i++) {
             float t = (float) i / SEGMENTS;
             lengthOffsets[i] = (t - 0.5f) * length;
-            
-            // Width: pointed at both ends, widest at center. No floor -> true taper to a point.
-            float distFromCenter = Math.abs(t - 0.5f) * 2.0f;
-            widths[i] = maxWidth * (1.0f - distFromCenter * distFromCenter);
         }
     }
     
@@ -235,28 +255,50 @@ public class SlashEffect extends VFXInstance {
         
         float cosA = Mth.cos(sliceAngle);
         float sinA = Mth.sin(sliceAngle);
-        // lengthDir / widthDir: perpendicular, both inside the camera-facing plane.
-        Vector3f lengthDir = new Vector3f(right).mul(cosA).add(new Vector3f(up).mul(sinA));
-        Vector3f widthDir = new Vector3f(right).mul(-sinA).add(new Vector3f(up).mul(cosA));
+        // lengthDir / widthDir start in the camera-facing plane (right/up basis).
+        Vector3f planeLen = new Vector3f(right).mul(cosA).add(new Vector3f(up).mul(sinA));
+        Vector3f planeWid = new Vector3f(right).mul(-sinA).add(new Vector3f(up).mul(cosA));
+        // Tilt the blade slightly out of the screen plane along the view axis so its
+        // length gains depth variation -> it can be occluded PARTIALLY by blocks/mobs.
+        Vector3f lengthDir = new Vector3f(planeLen).mul(Mth.cos(BLADE_TILT)).add(new Vector3f(viewDir).mul(Mth.sin(BLADE_TILT)));
+        Vector3f widthDir = planeWid;
+
+        // LIVE tuning: thickness + outline read from gamerules every frame, so
+        // /gamerule slashThickness ... / slashOutline ... apply INSTANTLY, even to
+        // slashes already on screen (no /reload, no respawn). Stored in milliblocks
+        // (×1000) since GameRules has no double type; defaults match Config.
+        float thick = (float) SukunaPrototypeClient.gameruleMilli(SukunaPrototype.SLASH_THICKNESS, (int)(Config.SLASH_THICKNESS.get() * 1000));
+        float outlineW = (float) SukunaPrototypeClient.gameruleMilli(SukunaPrototype.SLASH_OUTLINE, (int)(Config.SLASH_OUTLINE.get() * 1000));
+        // Per-segment width taper (pointed ends, widest at center), scaled live.
+        // t-based so thickness is never baked into stored geometry.
+        java.util.function.Function<Integer, Float> segWidth = (i) -> {
+            float t = (float) i / SEGMENTS;
+            float d = Math.abs(t - 0.5f) * 2.0f;
+            return thick * (1.0f - d * d);
+        };
         
-        // 1. OUTLINE (wider, behind, drawn first). Its extra width tapers to 0
-        // at the tips so it converges to a sharp point (looks like < not >).
-        float outlineAlpha = Math.min(1.0f, alpha * 1.2f);
-        if (outlineAlpha > 0.01f) {
-            VertexConsumer vc = bufferSource.getBuffer(getRenderType());
+        // 1. OUTLINE — neon glow. Two additive passes (soft outer halo + tight
+        //    bright edge). minRim keeps the rim visible all the way to the sharp
+        //    tip, so the whole slash reads as a glowing blade, not just its middle.
+        float vib = (float) Config.SLASH_OUTLINE_VIBRANCY.get().doubleValue();
+        float outlineAlpha = Math.min(1.0f, alpha * vib);
+        if (outlineAlpha > 0.01f && outlineW > 0.001f) {
+            VertexConsumer vc = bufferSource.getBuffer(SLASH_OUTLINE_TYPE);
             float or = ((outlineColor >> 16) & 0xFF) / 255.0f;
             float og = ((outlineColor >> 8) & 0xFF) / 255.0f;
             float ob = (outlineColor & 0xFF) / 255.0f;
-            renderBlade(vc, matrix, or, og, ob, outlineAlpha, sizeScale, OUTLINE_EXTRA, lengthDir, widthDir);
+            renderBlade(vc, matrix, or, og, ob, outlineAlpha * 0.45f, sizeScale, outlineW * 1.9f, 0.22f, segWidth, lengthDir, widthDir); // halo
+            renderBlade(vc, matrix, or, og, ob, outlineAlpha,        sizeScale, outlineW,       0.26f, segWidth, lengthDir, widthDir); // edge
         }
-        
-        // 2. MAIN BLADE (solid fill).
+
+        // 2. MAIN BLADE (solid fill). Depth-tested like the outline, so it
+        // punctures into blocks/mobs together with the rim (no x-ray).
         if (alpha > 0.01f) {
-            VertexConsumer vc = bufferSource.getBuffer(getRenderType());
+            VertexConsumer vc = bufferSource.getBuffer(SLASH_RENDER_TYPE);
             float mr = ((mainColor >> 16) & 0xFF) / 255.0f;
             float mg = ((mainColor >> 8) & 0xFF) / 255.0f;
             float mb = (mainColor & 0xFF) / 255.0f;
-            renderBlade(vc, matrix, mr, mg, mb, alpha, sizeScale, 0f, lengthDir, widthDir);
+            renderBlade(vc, matrix, mr, mg, mb, alpha, sizeScale, 0f, 0f, segWidth, lengthDir, widthDir);
         }
         
         poseStack.popPose();
@@ -269,14 +311,18 @@ public class SlashEffect extends VFXInstance {
      *   point at both ends exactly like the main blade does.
      */
     private void renderBlade(VertexConsumer vc, Matrix4f matrix, float r, float g, float b, float alpha,
-                              float scale, float extraWidth, Vector3f lengthDir, Vector3f widthDir) {
+                              float scale, float extraWidth, float minRim,
+                              java.util.function.Function<Integer, Float> segWidth, Vector3f lengthDir, Vector3f widthDir) {
         for (int i = 0; i <= SEGMENTS; i++) {
             float lenOffset = lengthOffsets[i] * scale;
-            // taper (1 - dist^2) at the blade also scales the outline's extra width,
-            // so tips pinch to a true point on BOTH layers -> "<" not ">".
+            // taper (1 - dist^2) shapes the pointy ends.
             float taper = 1.0f - Math.abs((float) i / SEGMENTS - 0.5f) * 2.0f;
             taper = taper * taper;
-            float w = widths[i] * scale + extraWidth * taper;
+            // Outline rim keeps a minimum fraction (minRim) at the tips so the
+            // neon edge stays visible to the very point; the solid core (extraWidth=0)
+            // still tapers to a true point.
+            float rim = extraWidth * (minRim + (1.0f - minRim) * taper);
+            float w = segWidth.apply(i) * scale + rim;
             
             Vector3f center = new Vector3f(lengthDir).mul(lenOffset);
             Vector3f halfWidth = new Vector3f(widthDir).mul(w * 0.5f);
