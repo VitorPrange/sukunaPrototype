@@ -4,11 +4,9 @@ import com.prang.sukunaprototype.client.vfx.SlashEffect;
 import com.prang.sukunaprototype.client.vfx.VFXManager;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -20,6 +18,7 @@ import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import net.neoforged.neoforge.client.event.InputEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 import com.mojang.blaze3d.platform.InputConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,8 +33,17 @@ public class SukunaPrototypeClient {
     private static final Logger LOGGER = LoggerFactory.getLogger("SukunaPrototypeSlash");
     private static final Random RANDOM = new Random();
 
-    // X key scanCode = 45 - fires a random ColorScheme each press (spam for variety)
-    private static final int SLASH_SCANCODE = 45;
+    // X key scanCode = 45 - tap: one random slash. hold: consecutive slashes that accelerate.
+    // Hold-ramp tuning (in ticks @ 20tps): starts at HOLD_SLOW, eases (quadratic)
+    // up to the gamerule cap (slashMaxRate) over HOLD_RAMP ticks. Short ramp so
+    // the rate actually reaches the gamerule value instead of plateauing below it.
+    private static final int HOLD_SLOW = 10;     // start interval: 2 slashes/sec
+    private static final int HOLD_RAMP = 20;     // ticks to reach the slashMaxRate cap (1s held)
+
+    // Hold state
+    private static boolean holding = false;
+    private static int holdTicks = 0;
+    private static int nextSlashTick = 0;
 
     // Soft-lock targeting: how far (in blocks) we search for a target along
     // the player's look direction, and how far off-center (in blocks) an
@@ -64,7 +72,6 @@ public class SukunaPrototypeClient {
     static void registerKeyMappings(RegisterKeyMappingsEvent event) {
         LOGGER.info("[SlashVFX] Registering key mappings...");
 
-        // X - random color slash
         SLASH_KEY = new KeyMapping(
             "key.sukunaprototype.slash.random",
             KeyConflictContext.IN_GAME,
@@ -74,16 +81,70 @@ public class SukunaPrototypeClient {
         );
         event.register(SLASH_KEY);
 
-        LOGGER.info("[SlashVFX] Key bindings registered: X=Random All Colors");
+        LOGGER.info("[SlashVFX] Key bindings registered: X=Random All (tap) / hold to ramp");
     }
 
     @SubscribeEvent
     static void onKeyInput(InputEvent.Key event) {
-        if (event.getAction() != 1) return; // only key press
-        if (event.getScanCode() != SLASH_SCANCODE) return;
+        if (event.getAction() != 1) return;          // only initial press fires
+        if (!SLASH_KEY.isDown()) return;              // respects the key bound in Controls
 
-        LOGGER.info("[SlashVFX] ===== RANDOM-SCHEME SLASH (X) =====");
-        spawnRandomSlashAtTarget();
+        if (!holding) {
+            spawnRandomSlashAtTarget();               // immediate first slash (no tick latency)
+            holdTicks = 0;
+            nextSlashTick = slashInterval(0);
+            holding = true;
+        }
+    }
+
+    // Drives the consecutive-slash ramp while the bound key is held.
+    @SubscribeEvent
+    static void onClientTick(ClientTickEvent.Post event) {
+        if (!SLASH_KEY.isDown()) {                    // key released (or unbound): stop
+            if (holding) {
+                holding = false;
+                holdTicks = 0;
+                nextSlashTick = 0;
+            }
+            return;
+        }
+        if (Minecraft.getInstance().player == null || Minecraft.getInstance().level == null) return;
+
+        holdTicks++;
+        if (holdTicks >= nextSlashTick) {
+            spawnRandomSlashAtTarget();
+            nextSlashTick = holdTicks + slashInterval(holdTicks);
+        }
+    }
+
+    // Interval in ticks between consecutive hold-slashes. Starts at HOLD_SLOW,
+    // eases (quadratic) down to the gamerule cap (slashMaxRate -> ticks) as the hold lengthens.
+    private static int slashInterval(int held) {
+        int capTicks = gameruleCapTicks();           // fastest allowed interval (smaller = faster)
+        float p = Math.min(1f, (float) held / HOLD_RAMP);
+        float eased = p * p;
+        return Math.max(capTicks, Math.round(HOLD_SLOW - (HOLD_SLOW - capTicks) * eased));
+    }
+
+    // gamerule slashMaxRate (slashes/sec) -> interval in ticks, clamped to a sane floor.
+    // In single-player the authoritative value lives on the integrated SERVER
+    // (your /gamerule command updates it there); the client's copy is only set at
+    // login and never synced, so reading mc.level would always return the default.
+    // Prefer the SP server's rules; fall back to the client copy in multiplayer.
+    private static int gameruleCapTicks() {
+        Minecraft mc = Minecraft.getInstance();
+        int rate = 7;
+        try {
+            MinecraftServer srv = mc.getSingleplayerServer();
+            if (srv != null) {
+                rate = srv.getGameRules().getInt(SukunaPrototype.SLASH_MAX_RATE);
+            } else if (mc.level != null) {
+                rate = mc.level.getGameRules().getInt(SukunaPrototype.SLASH_MAX_RATE);
+            }
+        } catch (Exception ignored) { /* fall back to default 7 */ }
+        rate = Math.max(1, Math.min(60, rate));
+        // ticks per slash = 20 / rate, min 1 tick (20/s ceiling)
+        return Math.max(1, Math.round(20f / rate));
     }
 
     private static void spawnRandomSlashAtTarget() {

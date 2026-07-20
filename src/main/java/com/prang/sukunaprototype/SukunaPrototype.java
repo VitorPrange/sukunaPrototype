@@ -16,6 +16,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
+import net.minecraft.world.level.GameRules;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -62,6 +63,11 @@ public class SukunaPrototype {
             .displayItems((parameters, output) -> {
                 output.accept(EXAMPLE_ITEM.get()); // Add the example item to the tab. For your own tabs, this method is preferred over the event
             }).build());
+
+    // Max slash rate (slashes/sec) while holding X. Raised via /gamerule slashMaxRate.
+    // Default 7. Clamped to 1-60 in code. The hold ramp never exceeds this cap.
+    public static final GameRules.Key<GameRules.IntegerValue> SLASH_MAX_RATE =
+            GameRules.register("slashMaxRate", GameRules.Category.MISC, GameRules.IntegerValue.create(7));
 
     // The constructor for the mod class is the first code that is run when your mod is loaded.
     // FML will recognize some parameter types like IEventBus or ModContainer and pass them in automatically.

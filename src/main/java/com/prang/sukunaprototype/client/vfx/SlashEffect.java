@@ -178,20 +178,18 @@ public class SlashEffect extends VFXInstance {
         }
         
         float progress = getAgeRatio();
-        
-        if (progress < 0.13f) {        // 2 ticks: instant appear
-            float p = progress / 0.13f;
-            currentScale = p * p;
-            currentAlpha = p;
-        } else if (progress < 0.4f) {  // 4 ticks: hold
+
+        // Instant appear at full alpha, hold, then fade out over the last 40%.
+        // No fade-IN (looks like a flicker) - the slash just shows up and dies.
+        if (progress < 0.6f) {            // full show
             currentScale = 1.0f;
             currentAlpha = 1.0f;
-        } else {                        // 9 ticks: fade out
-            float fadeProgress = (progress - 0.4f) / 0.6f;
-            currentScale = 1.0f - fadeProgress * 0.5f;
-            currentAlpha = (1.0f - fadeProgress) * (1.0f - fadeProgress);
+        } else {                           // last 40%: quick fade out
+            float f = (progress - 0.6f) / 0.4f;
+            currentAlpha = (1.0f - f) * (1.0f - f);
+            currentScale = 1.0f - f * 0.3f;
         }
-        
+
         return false;
     }
     
