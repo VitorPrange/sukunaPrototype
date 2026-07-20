@@ -162,6 +162,20 @@ public class SukunaPrototypeClient {
         return fallbackMilli / 1000.0;
     }
 
+    // Reads an IntegerValue gamerule holding MILLIHEARTS (×1000) and returns
+    // hearts (value / 1000.0). Prefers the SP server (authoritative, synced by
+    // your /gamerule edits), falls back to the client copy in multiplayer.
+    // Used for live slash damage so changes apply instantly, no reload.
+    public static float gameruleMilliHearts(GameRules.Key<GameRules.IntegerValue> key, int fallbackMilli) {
+        Minecraft mc = Minecraft.getInstance();
+        try {
+            MinecraftServer srv = mc.getSingleplayerServer();
+            if (srv != null) return srv.getGameRules().getInt(key) / 1000.0f;
+            if (mc.level != null) return mc.level.getGameRules().getInt(key) / 1000.0f;
+        } catch (Exception ignored) { /* fall back */ }
+        return fallbackMilli / 1000.0f;
+    }
+
     private static void spawnRandomSlashAtTarget() {
         SlashEffect.ColorScheme scheme = SlashEffect.ALL_SCHEMES[
                 RANDOM.nextInt(SlashEffect.ALL_SCHEMES.length)];
@@ -176,6 +190,17 @@ public class SukunaPrototypeClient {
         if (scheme == SlashEffect.WHITE_BLACK) return "WHITE_BLACK";
         if (scheme == SlashEffect.WHITE_RED) return "WHITE_RED";
         return "?";
+    }
+
+    // Reads the live slash damage from gamerule (millihearts/1000) or config fallback.
+    // Returns damage in hearts (half-hearts = HP). Enforces a minimum of 6.0 hearts for testing.
+    private static float currentSlashDamage() {
+        float dmg = gameruleMilliHearts(SukunaPrototype.SLASH_DAMAGE, (int)(Config.SLASH_DAMAGE.get() * 1000));
+        if (dmg < 6.0f) {
+            LOGGER.warn("[SlashVFX] currentSlashDamage read {} hearts (below 6.0), clamping to 6.0", dmg);
+            dmg = 6.0f;
+        }
+        return dmg;
     }
 
     private static void spawnSlashAtTarget(SlashEffect.ColorScheme scheme, String schemeName) {
@@ -198,6 +223,7 @@ public class SukunaPrototypeClient {
         SlashEffect.builder()
             .at(target)
             .colors(scheme)
+            .damage(currentSlashDamage())
             .spawn();
 
         LOGGER.info("[SlashVFX] {} slash spawned! Active effects: {}", schemeName, VFXManager.getActiveEffectCount());

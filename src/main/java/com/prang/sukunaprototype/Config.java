@@ -61,6 +61,12 @@ public class Config {
             .comment("Random length variation per slash (0 = none, 0.5 = half to 1.5x). Thickness is unaffected.")
             .defineInRange("slashLengthJitter", 0.35, 0.0, 1.0);
 
+    // Slash damage in hearts (half-hearts = 1 HP). Applied once per slash at spawn via AABB sweep.
+    // 0.0 = no damage. 10.0 = 5 hearts (10 HP). 20.0 = 10 hearts (20 HP).
+    public static final ModConfigSpec.DoubleValue SLASH_DAMAGE = BUILDER
+            .comment("Slash damage in hearts (half-hearts = 1 HP). Applied once per slash at spawn via AABB sweep. 0 = no damage.")
+            .defineInRange("slashDamage", 6.0, 0.0, 100.0);
+
     static final ModConfigSpec SPEC = BUILDER.build();
 
     private static boolean validateItemName(final Object obj) {

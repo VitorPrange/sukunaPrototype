@@ -8,18 +8,33 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.Camera;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.core.Direction;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.Random;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.UUID;
 
 /**
  * Straight, thin sword slash plane, billboard-style.
@@ -38,6 +53,7 @@ import java.util.Random;
  */
 @OnlyIn(Dist.CLIENT)
 public class SlashEffect extends VFXInstance {
+    private static final Logger LOGGER = LoggerFactory.getLogger("SlashEffect");
     
     private static final int SEGMENTS = 16;
     private static final Random RANDOM = new Random();
@@ -81,22 +97,26 @@ public class SlashEffect extends VFXInstance {
     };
     
     // Slash parameters
-    private final float length;
-    private final float maxWidth;
-    private final float sliceAngle; // 2D angle (radians) of the cut, in the camera's screen plane
-    private final ColorScheme colors;
-    private final boolean debugMode;
-    
-    // Animation
-    private float currentAlpha = 1.0f;
-    private float currentScale = 1.0f;
-    private float flash = 1.0f; // 1.0 = normal, >1 brightens edge toward white (separation flash)
-    
-    // Pre-computed parametric offsets along the blade's length. Direction is
-    // applied at render time (billboard), so these are scalars, not vectors.
-    // Thickness is NOT baked: it's read live from the slashThickness gamerule each
-    // frame in render(), so /gamerule slashThickness updates even spawned slashes.
-    private float[] lengthOffsets;
+        private final float length;
+        private final float maxWidth;
+        private final float sliceAngle; // 2D angle (radians) of the cut, in the camera's screen plane
+        private final ColorScheme colors;
+        private final boolean debugMode;
+        private final float damage; // hearts of damage (half-hearts = HP)
+
+        // Animation
+        private float currentAlpha = 1.0f;
+        private float currentScale = 1.0f;
+        private float flash = 1.0f; // 1.0 = normal, >1 brightens edge toward white (separation flash)
+
+        // Pre-computed parametric offsets along the blade's length. Direction is
+        // applied at render time (billboard), so these are scalars, not vectors.
+        // Thickness is NOT baked: it's read live from the slashThickness gamerule each
+        // frame in render(), so /gamerule slashThickness updates even spawned slashes.
+        private float[] lengthOffsets;
+
+        // Track entities already hit by this slash so each only takes damage once.
+        private final Set<UUID> hitEntities = new HashSet<>();
     
     // Two RenderTypes share the blade geometry. BOTH are depth-tested (LEQUAL)
     // so the slash PUNCTURES into blocks/mobs: the part in front of the geometry
@@ -139,43 +159,50 @@ public class SlashEffect extends VFXInstance {
     );
     
     public SlashEffect(Vec3 position, int maxAge, float length, float maxWidth, ColorScheme colors, boolean debugMode) {
-        this(position, RANDOM.nextFloat() * (float) (Math.PI * 2.0), maxAge, length, maxWidth, colors, debugMode);
-    }
-    
-    public SlashEffect(Vec3 position, float sliceAngle, int maxAge, float length, float maxWidth,
-                        ColorScheme colors, boolean debugMode) {
-        super(position, maxAge);
-        this.sliceAngle = sliceAngle;
-        this.length = length;
-        this.maxWidth = maxWidth;
-        this.colors = colors;
-        this.debugMode = debugMode;
-        this.billboard = false;
-        this.fullBright = true;
-        this.renderLayer = debugMode ? 2000 : 1000;
-        
-        setCullingRadius(length * 0.6f);
-        computeBlade();
-    }
-    
-    // 15 ticks = 0.5s default. Length/thickness read from config so the
-    // slashLength / slashThickness options take effect live. Length also gets
-    // per-spawn jitter (thickness stays constant).
-    public SlashEffect(Vec3 position, ColorScheme colors) {
-        this(position, 15,
-                (float) Config.SLASH_LENGTH.get().doubleValue()
-                        * (1.0f + (RANDOM.nextFloat() * 2.0f - 1.0f) * (float) Config.SLASH_LENGTH_JITTER.get().doubleValue()),
-                (float) Config.SLASH_THICKNESS.get().doubleValue(),
-                colors, false);
-    }
-    
-    // Backward-compatible with the old (position, yaw, maxAge, length, maxWidth,
-    // height, colors) signature still used in VFXManager.spawnSlashAtEntity.
-    // yaw/height are ignored now since angle is fully random and height no
-    // longer affects the flat billboard blade.
-    public SlashEffect(Vec3 position, float legacyYaw, int maxAge, float length, float maxWidth, float legacyHeight, ColorScheme colors) {
-        this(position, maxAge, length, maxWidth, colors, false);
-    }
+            this(position, RANDOM.nextFloat() * (float) (Math.PI * 2.0), maxAge, length, maxWidth, colors, debugMode, 0.0f);
+        }
+
+        public SlashEffect(Vec3 position, float sliceAngle, int maxAge, float length, float maxWidth,
+                            ColorScheme colors, boolean debugMode) {
+            this(position, sliceAngle, maxAge, length, maxWidth, colors, debugMode, 0.0f);
+        }
+
+        // 15 ticks = 0.5s default. Length/thickness read from config so the
+        // slashLength / slashThickness options take effect live. Length also gets
+        // per-spawn jitter (thickness stays constant).
+        public SlashEffect(Vec3 position, ColorScheme colors) {
+            this(position, RANDOM.nextFloat() * (float) (Math.PI * 2.0), 15,
+                    (float) Config.SLASH_LENGTH.get().doubleValue()
+                            * (1.0f + (RANDOM.nextFloat() * 2.0f - 1.0f) * (float) Config.SLASH_LENGTH_JITTER.get().doubleValue()),
+                    (float) Config.SLASH_THICKNESS.get().doubleValue(),
+                    colors, false, 0.0f);
+        }
+
+        // Backward-compatible with the old (position, yaw, maxAge, length, maxWidth,
+        // height, colors) signature still used in VFXManager.spawnSlashAtEntity.
+        // yaw/height are ignored now since angle is fully random and height no
+        // longer affects the flat billboard blade.
+        public SlashEffect(Vec3 position, float legacyYaw, int maxAge, float length, float maxWidth, float legacyHeight, ColorScheme colors) {
+            this(position, RANDOM.nextFloat() * (float) (Math.PI * 2.0), maxAge, length, maxWidth, colors, false, 0.0f);
+        }
+
+        // Full constructor with damage parameter
+        public SlashEffect(Vec3 position, float sliceAngle, int maxAge, float length, float maxWidth,
+                            ColorScheme colors, boolean debugMode, float damage) {
+            super(position, maxAge);
+            this.sliceAngle = sliceAngle;
+            this.length = length;
+            this.maxWidth = maxWidth;
+            this.colors = colors;
+            this.debugMode = debugMode;
+            this.damage = damage;
+            this.billboard = false;
+            this.fullBright = true;
+            this.renderLayer = debugMode ? 2000 : 1000;
+
+            setCullingRadius(length * 0.6f);
+            computeBlade();
+        }
     
     private void computeBlade() {
         lengthOffsets = new float[SEGMENTS + 1];
@@ -186,13 +213,146 @@ public class SlashEffect extends VFXInstance {
     }
 
     // Drives the separation-flash brightness (1.0 normal; >1 = white-hot edge).
+    // Drives the separation-flash brightness (1.0 normal; >1 = white-hot edge).
     private void setFlash(float f) { this.flash = f; }
-    
+
+    /**
+     * Applies damage to entities intersecting the slash AABB.
+     * Called once at age==1 so damage is applied on the first real tick after spawn.
+     */
+    private void applyDamage(ClientLevel level) {
+        if (damage <= 0.0f) {
+            LOGGER.info("[SlashEffect.applyDamage] SKIP: damage <= 0 ({})", damage);
+            return; // No damage configured
+        }
+
+        // Reconstruct the same geometry used in render() for the AABB
+        Minecraft mc = Minecraft.getInstance();
+        Camera camera = mc.gameRenderer.getMainCamera();
+        if (camera == null) {
+            LOGGER.info("[SlashEffect.applyDamage] SKIP: camera is null");
+            return;
+        }
+
+        Vec3 cameraPos = camera.getPosition();
+        Vec3 renderPos = getRenderPosition(0); // no partial tick for damage calc
+
+        // Camera-facing 2D basis (same as render)
+        Vector3f viewDir = camera.getLookVector();
+        Vector3f worldUp = new Vector3f(0, 1, 0);
+        Vector3f right = new Vector3f(viewDir).cross(worldUp);
+        if (right.lengthSquared() < 0.0001f) {
+            right.set(1, 0, 0);
+        } else {
+            right.normalize();
+        }
+        Vector3f up = new Vector3f(right).cross(viewDir).normalize();
+
+        float cosA = Mth.cos(sliceAngle);
+        float sinA = Mth.sin(sliceAngle);
+        Vector3f planeLen = new Vector3f(right).mul(cosA).add(new Vector3f(up).mul(sinA));
+        Vector3f planeWid = new Vector3f(right).mul(-sinA).add(new Vector3f(up).mul(cosA));
+        Vector3f lengthDir = new Vector3f(planeLen).mul(Mth.cos(BLADE_TILT)).add(new Vector3f(viewDir).mul(Mth.sin(BLADE_TILT)));
+        Vector3f widthDir = planeWid;
+
+        // Live thickness from gamerule (same as render)
+        float thick = (float) SukunaPrototypeClient.gameruleMilli(SukunaPrototype.SLASH_THICKNESS, (int)(Config.SLASH_THICKNESS.get() * 1000));
+
+        // Build AABB covering the full blade length + max thickness (with small padding)
+        float halfLen = length * 0.5f;
+        float halfThick = thick * 0.5f;
+        Vec3 min = renderPos.subtract(
+            lengthDir.x * halfLen + widthDir.x * halfThick,
+            lengthDir.y * halfLen + widthDir.y * halfThick,
+            lengthDir.z * halfLen + widthDir.z * halfThick
+        );
+        Vec3 max = renderPos.add(
+            lengthDir.x * halfLen + widthDir.x * halfThick,
+            lengthDir.y * halfLen + widthDir.y * halfThick,
+            lengthDir.z * halfLen + widthDir.z * halfThick
+        );
+        AABB box = new AABB(min, max).inflate(0.5); // small pad for edge cases
+
+        LOGGER.info("[SlashEffect.applyDamage] AABB: min={} max={} length={} thick={} pos={}", min, max, length, thick, renderPos);
+
+        // Find living entities in the box and hurt them once
+        List<LivingEntity> targets = level.getEntitiesOfClass(LivingEntity.class, box);
+        LOGGER.info("[SlashEffect.applyDamage] Found {} entities in AABB", targets.size());
+        for (LivingEntity e : targets) {
+            LOGGER.info("[SlashEffect.applyDamage]   Entity: {} pos={} uuid={}", e.getName().getString(), e.position(), e.getUUID());
+        }
+
+        // damage field is in HEARTS; hurt() expects HALF-HEARTS (HP). Convert: hearts * 2.
+        float damageAmount = damage * 2.0f; 
+        LOGGER.info("[SlashEffect.applyDamage] Damage amount: {} HP (hearts={})", damageAmount, damage);
+
+        // In singleplayer, apply damage on the SERVER level (integrated server)
+        // Client-level entities are visual mirrors; real damage happens on the server.
+        MinecraftServer server = mc.getSingleplayerServer();
+        if (server != null) {
+            // Execute on server thread
+            server.execute(() -> {
+                ServerLevel serverLevel = server.overworld(); // or get the correct dimension
+                // Get the server-side player for the damage source
+                ServerPlayer serverPlayer = server.getPlayerList().getPlayer(mc.player.getUUID());
+                if (serverPlayer == null) {
+                    LOGGER.warn("[SlashEffect.applyDamage] Could not find server player for UUID {}", mc.player.getUUID());
+                }
+                for (LivingEntity target : targets) {
+                    if (target == mc.player) {
+                        LOGGER.info("[SlashEffect.applyDamage] SKIP: target is player");
+                        continue;
+                    }
+                    UUID uuid = target.getUUID();
+                    if (hitEntities.add(uuid)) {
+                        // Find the corresponding entity on the server
+                        Entity serverEntity = serverLevel.getEntity(uuid);
+                        if (serverEntity instanceof LivingEntity serverTarget) {
+                            LOGGER.info("[SlashEffect.applyDamage] SERVER HURTING target={} uuid={} damage={}", serverTarget.getName().getString(), uuid, damageAmount);
+                            // Use a damage source that works regardless of player reference
+                            DamageSource source = serverLevel.damageSources().mobAttack(serverPlayer != null ? serverPlayer : serverTarget);
+                            if (serverPlayer == null) {
+                                // Fallback to generic magic damage if no player found
+                                source = serverLevel.damageSources().magic();
+                            }
+                            // Clear invulnerability frames so rapid slashes all deal damage
+                            serverTarget.invulnerableTime = 0;
+                            boolean hurtResult = serverTarget.hurt(source, damageAmount);
+                            LOGGER.info("[SlashEffect.applyDamage] server hurt() returned: {} (source: {})", hurtResult, source);
+                        } else {
+                            LOGGER.warn("[SlashEffect.applyDamage] Could not find server entity for uuid {}", uuid);
+                        }
+                    } else {
+                        LOGGER.info("[SlashEffect.applyDamage] SKIP: already hit this slash (uuid={})", target.getUUID());
+                    }
+                }
+            });
+        } else {
+            // Fallback: try client level (for non-integrated-server cases)
+            LOGGER.warn("[SlashEffect.applyDamage] No integrated server, falling back to client level");
+            for (LivingEntity target : targets) {
+                if (target == mc.player) {
+                    LOGGER.info("[SlashEffect.applyDamage] SKIP: target is player");
+                    continue;
+                }
+                UUID uuid = target.getUUID();
+                if (hitEntities.add(uuid)) {
+                    LOGGER.info("[SlashEffect.applyDamage] HURTING target={} uuid={} damage={}", target.getName().getString(), uuid, damageAmount);
+                    DamageSource source = level.damageSources().playerAttack(mc.player);
+                    boolean hurtResult = target.hurt(source, damageAmount);
+                    LOGGER.info("[SlashEffect.applyDamage] hurt() returned: {}", hurtResult);
+                } else {
+                    LOGGER.info("[SlashEffect.applyDamage] SKIP: already hit this slash (uuid={})", uuid);
+                }
+            }
+        }
+    }
+
     @Override
     public RenderType getRenderType() {
         return SLASH_RENDER_TYPE;
     }
-    
+
     @Override
     protected boolean onTick(ClientLevel level) {
         if (debugMode) {
@@ -200,7 +360,7 @@ public class SlashEffect extends VFXInstance {
             currentScale = 1.0f;
             return false;
         }
-        
+
         float progress = getAgeRatio();
 
         // SEPARATION FLASH — the Dismantle "ignites": the cut line pops to
@@ -208,6 +368,11 @@ public class SlashEffect extends VFXInstance {
         // then settles to 1.0. No particles — just the line itself flashing.
         float flash = age < 2 ? 1.6f : Math.max(1.0f, 1.6f - (float)(age - 2) / 6.0f * 0.6f);
         setFlash(flash);
+
+        // Apply damage on the first real tick (age == 1, after spawn)
+        if (age == 1) {
+            applyDamage(level);
+        }
 
         // Instant appear at full alpha, hold, then fade out over the last 40%.
         // No fade-IN (looks like a flicker) - the slash just shows up and dies.
@@ -355,13 +520,14 @@ public class SlashEffect extends VFXInstance {
     public static Builder builder() { return new Builder(); }
     
     public static class Builder {
-        private Vec3 position = Vec3.ZERO;
-        private Entity target = null;
-        private int maxAge = 15;
-        private float length = (float) Config.SLASH_LENGTH.get().doubleValue();
-        private float maxWidth = (float) Config.SLASH_THICKNESS.get().doubleValue();
-        private ColorScheme colors = CLASSIC;
-        private boolean debugMode = false;
+            private Vec3 position = Vec3.ZERO;
+            private Entity target = null;
+            private int maxAge = 15;
+            private float length = (float) Config.SLASH_LENGTH.get().doubleValue();
+            private float maxWidth = (float) Config.SLASH_THICKNESS.get().doubleValue();
+            private ColorScheme colors = CLASSIC;
+            private boolean debugMode = false;
+            private float damage = (float) Config.SLASH_DAMAGE.get().doubleValue();
         
         public Builder at(Entity target) { this.target = target; if (target!=null) this.position = target.position(); return this; }
         public Builder at(Vec3 p) { this.position = p; this.target = null; return this; }
@@ -375,6 +541,7 @@ public class SlashEffect extends VFXInstance {
         public Builder height(float h) { return this; } // kept for call-site compatibility, unused now
         public Builder colors(ColorScheme c) { this.colors = c; return this; }
         public Builder debugMode(boolean d) { this.debugMode = d; return this; }
+        public Builder damage(float d) { this.damage = d; return this; }
         
         public SlashEffect build() {
             Vec3 pos;
@@ -413,7 +580,7 @@ public class SlashEffect extends VFXInstance {
             float lenMul = 1.0f + (RANDOM.nextFloat() * 2.0f - 1.0f) * jit;
             float finalLen = length * lenMul;
             
-            return new SlashEffect(pos, sliceAngle, maxAge, finalLen, maxWidth, colors, debugMode);
+            return new SlashEffect(pos, sliceAngle, maxAge, finalLen, maxWidth, colors, debugMode, damage);
         }
         public void spawn() { VFXManager.spawn(build()); }
     }

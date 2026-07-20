@@ -2,6 +2,7 @@ package com.prang.sukunaprototype.client.vfx;
 
 import com.prang.sukunaprototype.Config;
 import com.prang.sukunaprototype.SukunaPrototype;
+import com.prang.sukunaprototype.SukunaPrototypeClient;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
@@ -64,18 +65,20 @@ public class VFXManager {
             return;
         }
         
-        ClientLevel level = (ClientLevel) target.level();
-        Vec3 targetPos = target.position();
+        Vec3 targetPos = target.position().add(0, target.getBbHeight() * 0.6, 0); // chest height
         
-        SlashEffect slash = new SlashEffect(
-            targetPos,
-            target.getYRot(),
-            15,
-            (float) Config.SLASH_LENGTH.get().doubleValue(),
-            (float) Config.SLASH_THICKNESS.get().doubleValue(),
-            1.5f,
-            SlashEffect.CLASSIC
-        );
+        float liveDamage = SukunaPrototypeClient.gameruleMilliHearts(
+            SukunaPrototype.SLASH_DAMAGE, (int)(Config.SLASH_DAMAGE.get() * 1000));
+        if (liveDamage < 6.0f) {
+            LOGGER.warn("[VFXManager] spawnSlashAtEntity read damage {} hearts (below 6.0), clamping to 6.0", liveDamage);
+            liveDamage = 6.0f;
+        }
+        
+        SlashEffect slash = SlashEffect.builder()
+            .at(targetPos)
+            .colors(SlashEffect.CLASSIC)
+            .damage(liveDamage)
+            .build();
         
         spawn(slash);
     }

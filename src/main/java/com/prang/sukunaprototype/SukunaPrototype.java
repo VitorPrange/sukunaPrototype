@@ -78,6 +78,11 @@ public class SukunaPrototype {
     public static final GameRules.Key<GameRules.IntegerValue> SLASH_OUTLINE =
             GameRules.register("slashOutline", GameRules.Category.MISC, GameRules.IntegerValue.create(120));
 
+    // Real-time slash damage in MILLIHEARTS (×1000). /gamerule slashDamage 12000 -> 12 hearts (24 HP).
+    // Applied once per slash at spawn (age==1) via AABB sweep. Millihearts for gamerule integer granularity.
+    public static final GameRules.Key<GameRules.IntegerValue> SLASH_DAMAGE =
+            GameRules.register("slashDamage", GameRules.Category.MISC, GameRules.IntegerValue.create(6000)); // 6 hearts default
+
     // The constructor for the mod class is the first code that is run when your mod is loaded.
     // FML will recognize some parameter types like IEventBus or ModContainer and pass them in automatically.
     public SukunaPrototype(IEventBus modEventBus, ModContainer modContainer) {
