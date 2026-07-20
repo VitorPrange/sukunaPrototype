@@ -90,6 +90,7 @@ public class SlashEffect extends VFXInstance {
     // Animation
     private float currentAlpha = 1.0f;
     private float currentScale = 1.0f;
+    private float flash = 1.0f; // 1.0 = normal, >1 brightens edge toward white (separation flash)
     
     // Pre-computed parametric offsets along the blade's length. Direction is
     // applied at render time (billboard), so these are scalars, not vectors.
@@ -183,6 +184,9 @@ public class SlashEffect extends VFXInstance {
             lengthOffsets[i] = (t - 0.5f) * length;
         }
     }
+
+    // Drives the separation-flash brightness (1.0 normal; >1 = white-hot edge).
+    private void setFlash(float f) { this.flash = f; }
     
     @Override
     public RenderType getRenderType() {
@@ -198,6 +202,12 @@ public class SlashEffect extends VFXInstance {
         }
         
         float progress = getAgeRatio();
+
+        // SEPARATION FLASH — the Dismantle "ignites": the cut line pops to
+        // white-hot on the first ~2 ticks (flash > 1 -> edge lerps to white),
+        // then settles to 1.0. No particles — just the line itself flashing.
+        float flash = age < 2 ? 1.6f : Math.max(1.0f, 1.6f - (float)(age - 2) / 6.0f * 0.6f);
+        setFlash(flash);
 
         // Instant appear at full alpha, hold, then fade out over the last 40%.
         // No fade-IN (looks like a flicker) - the slash just shows up and dies.
@@ -287,8 +297,15 @@ public class SlashEffect extends VFXInstance {
             float or = ((outlineColor >> 16) & 0xFF) / 255.0f;
             float og = ((outlineColor >> 8) & 0xFF) / 255.0f;
             float ob = (outlineColor & 0xFF) / 255.0f;
-            renderBlade(vc, matrix, or, og, ob, outlineAlpha * 0.45f, sizeScale, outlineW * 1.9f, 0.22f, segWidth, lengthDir, widthDir); // halo
-            renderBlade(vc, matrix, or, og, ob, outlineAlpha,        sizeScale, outlineW,       0.26f, segWidth, lengthDir, widthDir); // edge
+            // Separation flash: lerp the edge color toward white-hot when flash > 1.
+            float fk = Math.max(0f, flash - 1.0f) * 2.0f; // 0..1 as flash 1..1.5
+            if (fk > 0.001f) {
+                or = or + (1.0f - or) * fk; og = og + (1.0f - og) * fk; ob = ob + (1.0f - ob) * fk;
+            }
+            // EDGE-ONLY GLOW — tight halo + sharp edge, surgical. No fat middle
+            // bloom: a cursed-energy line, not a glow stick. outlineW = edge tightness.
+            renderBlade(vc, matrix, or, og, ob, outlineAlpha * 0.5f,  sizeScale, outlineW * 2.2f, 0.0f, segWidth, lengthDir, widthDir); // tight halo
+            renderBlade(vc, matrix, or, og, ob, outlineAlpha,         sizeScale, outlineW,       0.30f, segWidth, lengthDir, widthDir); // sharp edge
         }
 
         // 2. MAIN BLADE (solid fill). Depth-tested like the outline, so it
@@ -377,9 +394,18 @@ public class SlashEffect extends VFXInstance {
             float jitterZ = (RANDOM.nextFloat() - 0.5f) * 1.0f;
             pos = pos.add(jitterX, jitterY, jitterZ);
             
-            // Fully random on-screen angle (0-360°): horizontal, vertical,
-            // diagonal, anything - all equally likely.
-            float sliceAngle = RANDOM.nextFloat() * (float) (Math.PI * 2.0);
+            // 1. DIAGONAL BIAS — Sukuna's Dismantle cuts are deliberate ／ lines,
+            // not uniform 360° swooshes. Snap toward discrete diagonal/vertical
+            // slots with a small wobble so each cut reads intentional.
+            float[] CUT_SLOTS = {
+                (float) (Math.PI * 0.25f),  // ／
+                (float) (Math.PI * 0.75f),  // ＼
+                (float) (Math.PI * 0.50f),  // │
+                (float) (Math.PI * 0.00f),  // ─
+                (float) (Math.PI * 1.00f)   // ─
+            };
+            float sliceAngle = CUT_SLOTS[RANDOM.nextInt(CUT_SLOTS.length)]
+                    + (RANDOM.nextFloat() - 0.5f) * 0.40f; // ±~11° wobble
             
             // Per-spawn length randomness: thickness stays constant (maxWidth),
             // only the length varies. finalLen = length * (1 ± jitter).
