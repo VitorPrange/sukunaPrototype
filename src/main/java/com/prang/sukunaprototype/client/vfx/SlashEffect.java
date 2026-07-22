@@ -63,6 +63,12 @@ public class SlashEffect extends VFXInstance {
     private static final int SEGMENTS = 16;
     private static final Random RANDOM = new Random();
     
+    // Store camera basis at spawn time so slash stays fixed in world space
+    private Vector3f spawnRight;
+    private Vector3f spawnUp;
+    private Vector3f spawnViewDir;
+    private Vec3 spawnPos;
+    
     // Distance scaling: keep a constant apparent (screen) size no matter the range.
     // Tighter band so the slash stays LONG up close (higher min) and THIN far
     // away (lower max) instead of shrinking to nothing in your face or ballooning
@@ -207,6 +213,26 @@ public class SlashEffect extends VFXInstance {
 
             setCullingRadius(length * 0.6f);
             computeBlade();
+            
+            // Capture camera basis at spawn time so slash stays fixed in world space
+            Minecraft mc = Minecraft.getInstance();
+            Camera camera = mc.gameRenderer.getMainCamera();
+            if (camera != null) {
+                Vector3f viewDir = camera.getLookVector();
+                Vector3f worldUp = new Vector3f(0, 1, 0);
+                Vector3f right = new Vector3f(viewDir).cross(worldUp);
+                if (right.lengthSquared() < 0.0001f) {
+                    right.set(1, 0, 0);
+                } else {
+                    right.normalize();
+                }
+                Vector3f up = new Vector3f(right).cross(viewDir).normalize();
+                
+                this.spawnRight = right;
+                this.spawnUp = up;
+                this.spawnViewDir = viewDir;
+                this.spawnPos = mc.player.getEyePosition(1.0f);
+            }
         }
     
     private void computeBlade() {
@@ -448,10 +474,19 @@ public class SlashEffect extends VFXInstance {
             renderPos.y - cameraPos.y,
             renderPos.z - cameraPos.z
         );
-        // Pure translation only - no rotation here. All orientation is baked
-        // directly into lengthDir/widthDir below, computed from the camera's
-        // own screen-space basis, so the slash is always flat-on to the
-        // viewer no matter which way sliceAngle points it.
+        
+        // Use stored camera basis from spawn time so slash stays fixed in world space
+        // Falls back to current camera if spawn basis wasn't captured
+        Vector3f viewDir = this.spawnViewDir != null ? this.spawnViewDir : camera.getLookVector();
+        Vector3f right = this.spawnRight != null ? this.spawnRight : new Vector3f(viewDir).cross(new Vector3f(0, 1, 0));
+        Vector3f up = this.spawnUp != null ? this.spawnUp : new Vector3f(right).cross(viewDir);
+        
+        if (right.lengthSquared() < 0.0001f) {
+            right.set(1, 0, 0);
+        }
+        right.normalize();
+        up.normalize();
+        
         Matrix4f matrix = poseStack.last().pose();
         
         int mainColor = colors.mainColor;
@@ -463,17 +498,6 @@ public class SlashEffect extends VFXInstance {
         float dist = (float) cameraPos.distanceTo(renderPos);
         float distScale = Mth.clamp(dist / SIZE_REF_DIST, SIZE_MIN_SCALE, SIZE_MAX_SCALE);
         float sizeScale = currentScale * distScale;
-        
-        // Camera-facing 2D basis (right/up in the plane facing the viewer).
-        Vector3f viewDir = camera.getLookVector();
-        Vector3f worldUp = new Vector3f(0, 1, 0);
-        Vector3f right = new Vector3f(viewDir).cross(worldUp);
-        if (right.lengthSquared() < 0.0001f) {
-            right.set(1, 0, 0);
-        } else {
-            right.normalize();
-        }
-        Vector3f up = new Vector3f(right).cross(viewDir).normalize();
         
         float cosA = Mth.cos(sliceAngle);
         float sinA = Mth.sin(sliceAngle);
