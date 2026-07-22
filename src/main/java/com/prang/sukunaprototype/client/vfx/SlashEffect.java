@@ -21,8 +21,12 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.level.ClipContext;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Matrix4f;
@@ -35,6 +39,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.UUID;
+import java.util.ArrayList;
 
 /**
  * Straight, thin sword slash plane, billboard-style.
@@ -219,6 +224,7 @@ public class SlashEffect extends VFXInstance {
     /**
      * Applies damage to entities intersecting the slash AABB.
      * Called once at age==1 so damage is applied on the first real tick after spawn.
+     * Only targets hostile mobs (Monster category) with direct line of sight from player.
      */
     private void applyDamage(ClientLevel level) {
         if (damage <= 0.0f) {
@@ -236,6 +242,8 @@ public class SlashEffect extends VFXInstance {
 
         Vec3 cameraPos = camera.getPosition();
         Vec3 renderPos = getRenderPosition(0); // no partial tick for damage calc
+        Vec3 eyePos = mc.player.getEyePosition(1.0f);
+        Vec3 lookDir = mc.player.getViewVector(1.0f);
 
         // Camera-facing 2D basis (same as render)
         Vector3f viewDir = camera.getLookVector();
@@ -275,11 +283,58 @@ public class SlashEffect extends VFXInstance {
 
         LOGGER.info("[SlashEffect.applyDamage] AABB: min={} max={} length={} thick={} pos={}", min, max, length, thick, renderPos);
 
-        // Find living entities in the box and hurt them once
-        List<LivingEntity> targets = level.getEntitiesOfClass(LivingEntity.class, box);
-        LOGGER.info("[SlashEffect.applyDamage] Found {} entities in AABB", targets.size());
+        // Find living entities in the box
+        List<LivingEntity> candidates = level.getEntitiesOfClass(LivingEntity.class, box);
+        
+        // Filter: only hostile mobs (Monster category), not players, items, XP orbs, passive mobs
+        List<LivingEntity> targets = new ArrayList<>();
+        for (LivingEntity e : candidates) {
+            if (e == mc.player) {
+                LOGGER.info("[SlashEffect.applyDamage] SKIP: target is player");
+                continue;
+            }
+            // Only target hostile mobs (Monster category = monsters)
+            if (!(e instanceof Monster)) {
+                LOGGER.info("[SlashEffect.applyDamage] SKIP: not a Monster - {} ({})", e.getName().getString(), e.getType().getCategory());
+                continue;
+            }
+            
+            // Line of sight check: raycast from player eye to entity hitbox center
+            Vec3 targetCenter = e.getBoundingBox().getCenter();
+            ClipContext context = new ClipContext(
+                eyePos,
+                targetCenter,
+                ClipContext.Block.COLLIDER, // blocks block the ray
+                ClipContext.Fluid.NONE,
+                mc.player
+            );
+            HitResult hitResult = level.clip(context);
+            if (hitResult.getType() != HitResult.Type.MISS) {
+                LOGGER.info("[SlashEffect.applyDamage] SKIP: no line of sight to {} (hit: {})", e.getName().getString(), hitResult.getType());
+                continue;
+            }
+            
+            // Also check if any other entity blocks the view (including other mobs)
+            // Use a slightly thicker ray to be more forgiving
+            AABB rayBox = new AABB(eyePos, targetCenter).inflate(0.1);
+            List<Entity> blockingEntities = level.getEntities(mc.player, rayBox, entity -> 
+                entity != mc.player && entity != e && entity.isAlive() && entity.getType().getCategory() != MobCategory.MISC
+            );
+            if (!blockingEntities.isEmpty()) {
+                LOGGER.info("[SlashEffect.applyDamage] SKIP: entity {} blocks line of sight to {}", blockingEntities.get(0).getName().getString(), e.getName().getString());
+                continue;
+            }
+
+            targets.add(e);
+        }
+
+        LOGGER.info("[SlashEffect.applyDamage] Found {} valid targets after filtering", targets.size());
         for (LivingEntity e : targets) {
-            LOGGER.info("[SlashEffect.applyDamage]   Entity: {} pos={} uuid={}", e.getName().getString(), e.position(), e.getUUID());
+            LOGGER.info("[SlashEffect.applyDamage]   Target: {} pos={} uuid={}", e.getName().getString(), e.position(), e.getUUID());
+        }
+
+        if (targets.isEmpty()) {
+            return;
         }
 
         // damage field is in HEARTS; hurt() expects HALF-HEARTS (HP). Convert: hearts * 2.
@@ -299,10 +354,6 @@ public class SlashEffect extends VFXInstance {
                     LOGGER.warn("[SlashEffect.applyDamage] Could not find server player for UUID {}", mc.player.getUUID());
                 }
                 for (LivingEntity target : targets) {
-                    if (target == mc.player) {
-                        LOGGER.info("[SlashEffect.applyDamage] SKIP: target is player");
-                        continue;
-                    }
                     UUID uuid = target.getUUID();
                     if (hitEntities.add(uuid)) {
                         // Find the corresponding entity on the server
@@ -331,10 +382,6 @@ public class SlashEffect extends VFXInstance {
             // Fallback: try client level (for non-integrated-server cases)
             LOGGER.warn("[SlashEffect.applyDamage] No integrated server, falling back to client level");
             for (LivingEntity target : targets) {
-                if (target == mc.player) {
-                    LOGGER.info("[SlashEffect.applyDamage] SKIP: target is player");
-                    continue;
-                }
                 UUID uuid = target.getUUID();
                 if (hitEntities.add(uuid)) {
                     LOGGER.info("[SlashEffect.applyDamage] HURTING target={} uuid={} damage={}", target.getName().getString(), uuid, damageAmount);

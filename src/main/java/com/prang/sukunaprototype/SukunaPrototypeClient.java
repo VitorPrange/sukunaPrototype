@@ -6,8 +6,12 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.level.GameRules;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -232,6 +236,7 @@ public class SukunaPrototypeClient {
     /**
      * Finds the best entity to target along the player's look direction, with
      * tolerance so aim doesn't need to be pixel-perfect and works from far away.
+     * Includes line-of-sight check - target must be directly visible.
      */
     private static Entity findSoftTarget(Minecraft mc, double maxRange, double tolerance) {
         if (mc.player == null || mc.level == null) return null;
@@ -246,6 +251,9 @@ public class SukunaPrototypeClient {
         double bestPerpDist = Double.MAX_VALUE;
 
         for (Entity candidate : candidates) {
+            // Only target hostile mobs (monsters), not items, xp orbs, passive mobs, etc.
+            if (!(candidate instanceof Monster)) continue;
+
             Vec3 center = candidate.getBoundingBox().getCenter();
             Vec3 toEntity = center.subtract(eyePos);
 
@@ -259,6 +267,20 @@ public class SukunaPrototypeClient {
             double allowedDist = tolerance + entityRadius;
 
             if (perpDist <= allowedDist && perpDist < bestPerpDist) {
+                // Line of sight check - ensure nothing blocks the view to the entity's hitbox
+                ClipContext context = new ClipContext(
+                    eyePos,
+                    center,
+                    ClipContext.Block.OUTLINE, // treat block outlines as solid
+                    ClipContext.Fluid.NONE,
+                    mc.player
+                );
+                HitResult result = mc.level.clip(context);
+                if (result.getType() != HitResult.Type.MISS) {
+                    // Something blocks line of sight
+                    continue;
+                }
+
                 bestPerpDist = perpDist;
                 best = candidate;
             }
