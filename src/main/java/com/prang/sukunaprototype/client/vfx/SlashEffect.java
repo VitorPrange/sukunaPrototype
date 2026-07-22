@@ -286,16 +286,16 @@ public class SlashEffect extends VFXInstance {
         // Find living entities in the box
         List<LivingEntity> candidates = level.getEntitiesOfClass(LivingEntity.class, box);
         
-        // Filter: only hostile mobs (Monster category), not players, items, XP orbs, passive mobs
+        // Filter: only mobs (not players, items, XP orbs, etc.)
         List<LivingEntity> targets = new ArrayList<>();
         for (LivingEntity e : candidates) {
             if (e == mc.player) {
                 LOGGER.info("[SlashEffect.applyDamage] SKIP: target is player");
                 continue;
             }
-            // Only target hostile mobs (Monster category = monsters)
-            if (!(e instanceof Monster)) {
-                LOGGER.info("[SlashEffect.applyDamage] SKIP: not a Monster - {} ({})", e.getName().getString(), e.getType().getCategory());
+            // Only target mobs (Monster, Animal, WaterCreature, Ambient, etc.) - excludes MISC (items, XP orbs)
+            if (!(e instanceof net.minecraft.world.entity.Mob)) {
+                LOGGER.info("[SlashEffect.applyDamage] SKIP: not a Mob - {} ({})", e.getName().getString(), e.getType().getCategory());
                 continue;
             }
             
