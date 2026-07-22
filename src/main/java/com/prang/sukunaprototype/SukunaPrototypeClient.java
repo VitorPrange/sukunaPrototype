@@ -6,6 +6,7 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.level.GameRules;
@@ -251,8 +252,8 @@ public class SukunaPrototypeClient {
         double bestPerpDist = Double.MAX_VALUE;
 
         for (Entity candidate : candidates) {
-            // Only target hostile mobs (monsters), not items, xp orbs, passive mobs, etc.
-            if (!(candidate instanceof Monster)) continue;
+            // Target mobs and other players - excludes MISC (items, XP orbs)
+            if (candidate.getType().getCategory() == MobCategory.MISC) continue;
 
             Vec3 center = candidate.getBoundingBox().getCenter();
             Vec3 toEntity = center.subtract(eyePos);
