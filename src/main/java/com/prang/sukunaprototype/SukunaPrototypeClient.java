@@ -269,10 +269,11 @@ public class SukunaPrototypeClient {
 
             if (perpDist <= allowedDist && perpDist < bestPerpDist) {
                 // Line of sight check - ensure nothing blocks the view to the entity's hitbox
+                // Use COLLIDER instead of OUTLINE so grass/flowers/non-solid blocks don't block
                 ClipContext context = new ClipContext(
                     eyePos,
                     center,
-                    ClipContext.Block.OUTLINE, // treat block outlines as solid
+                    ClipContext.Block.COLLIDER, // only blocks with collision boxes
                     ClipContext.Fluid.NONE,
                     mc.player
                 );
