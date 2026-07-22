@@ -64,24 +64,24 @@ public class SukunaPrototype {
                 output.accept(EXAMPLE_ITEM.get()); // Add the example item to the tab. For your own tabs, this method is preferred over the event
             }).build());
 
-    // Max slash rate (slashes/sec) while holding X. Raised via /gamerule slashMaxRate.
+    // Max slash rate (slashes/sec) while holding X. Raised via /gamerule sukunaprototype:slashMaxRate.
     // Default 7. Clamped to 1-60 in code. The hold ramp never exceeds this cap.
     public static final GameRules.Key<GameRules.IntegerValue> SLASH_MAX_RATE =
-            GameRules.register("slashMaxRate", GameRules.Category.MISC, GameRules.IntegerValue.create(7));
+            GameRules.register("sukunaprototype:slashMaxRate", GameRules.Category.MISC, GameRules.IntegerValue.create(7));
 
-    // Real-time slash thickness in MILLIBLOCKS (×1000). /gamerule slashThickness 80 -> 0.08 blocks,
+    // Real-time slash thickness in MILLIBLOCKS (×1000). /gamerule sukunaprototype:slashThickness 80 -> 0.08 blocks,
     // thinner instantly, even on already-spawned slashes (render() reads this every frame). Lower = thinner.
     public static final GameRules.Key<GameRules.IntegerValue> SLASH_THICKNESS =
-            GameRules.register("slashThickness", GameRules.Category.MISC, GameRules.IntegerValue.create(160));
+            GameRules.register("sukunaprototype:slashThickness", GameRules.Category.MISC, GameRules.IntegerValue.create(160));
 
-    // Real-time outline rim thickness in MILLIBLOCKS (×1000). /gamerule slashOutline 120 -> 0.12 blocks.
+    // Real-time outline rim thickness in MILLIBLOCKS (×1000). /gamerule sukunaprototype:slashOutline 120 -> 0.12 blocks.
     public static final GameRules.Key<GameRules.IntegerValue> SLASH_OUTLINE =
-            GameRules.register("slashOutline", GameRules.Category.MISC, GameRules.IntegerValue.create(120));
+            GameRules.register("sukunaprototype:slashOutline", GameRules.Category.MISC, GameRules.IntegerValue.create(120));
 
-    // Real-time slash damage in MILLIHEARTS (×1000). /gamerule slashDamage 12000 -> 12 hearts (24 HP).
+    // Real-time slash damage in MILLIHEARTS (×1000). /gamerule sukunaprototype:slashDamage 12000 -> 12 hearts (24 HP).
     // Applied once per slash at spawn (age==1) via AABB sweep. Millihearts for gamerule integer granularity.
     public static final GameRules.Key<GameRules.IntegerValue> SLASH_DAMAGE =
-            GameRules.register("slashDamage", GameRules.Category.MISC, GameRules.IntegerValue.create(6000)); // 6 hearts default
+            GameRules.register("sukunaprototype:slashDamage", GameRules.Category.MISC, GameRules.IntegerValue.create(6000)); // 6 hearts default
 
     // The constructor for the mod class is the first code that is run when your mod is loaded.
     // FML will recognize some parameter types like IEventBus or ModContainer and pass them in automatically.
