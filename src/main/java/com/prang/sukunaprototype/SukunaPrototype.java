@@ -26,6 +26,8 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.registries.DeferredBlock;
 import net.neoforged.neoforge.registries.DeferredHolder;
@@ -88,6 +90,7 @@ public class SukunaPrototype {
     public SukunaPrototype(IEventBus modEventBus, ModContainer modContainer) {
         // Register the commonSetup method for modloading
         modEventBus.addListener(this::commonSetup);
+        modEventBus.addListener(this::registerCommands);
 
         // Register the Deferred Register to the mod event bus so blocks get registered
         BLOCKS.register(modEventBus);
@@ -106,6 +109,81 @@ public class SukunaPrototype {
 
         // Register our mod's ModConfigSpec so that FML can create and load the config file for us
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+    }
+
+    public void registerCommands(RegisterCommandsEvent event) {
+        var dispatcher = event.getDispatcher();
+        var literal = net.minecraft.commands.Commands.literal("sukunaprototype");
+        
+        // slashMaxRate
+        literal.then(net.minecraft.commands.Commands.literal("slashMaxRate")
+            .then(net.minecraft.commands.Commands.argument("value", IntegerArgumentType.integer(1, 60))
+                .executes(ctx -> {
+                    int value = IntegerArgumentType.getInteger(ctx, "value");
+                    ctx.getSource().getServer().getGameRules().getRule(SLASH_MAX_RATE).set(value, ctx.getSource().getServer());
+                    ctx.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal("Set slashMaxRate to " + value), true);
+                    return value;
+                })
+            )
+            .executes(ctx -> {
+                int current = ctx.getSource().getServer().getGameRules().getInt(SLASH_MAX_RATE);
+                ctx.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal("Current slashMaxRate: " + current), false);
+                return current;
+            })
+        );
+        
+        // slashThickness
+        literal.then(net.minecraft.commands.Commands.literal("slashThickness")
+            .then(net.minecraft.commands.Commands.argument("value", IntegerArgumentType.integer(0, 3000))
+                .executes(ctx -> {
+                    int value = IntegerArgumentType.getInteger(ctx, "value");
+                    ctx.getSource().getServer().getGameRules().getRule(SLASH_THICKNESS).set(value, ctx.getSource().getServer());
+                    ctx.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal("Set slashThickness to " + value + " (milliBlocks = " + (value / 1000.0) + " blocks)"), true);
+                    return value;
+                })
+            )
+            .executes(ctx -> {
+                int current = ctx.getSource().getServer().getGameRules().getInt(SLASH_THICKNESS);
+                ctx.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal("Current slashThickness: " + current + " (milliBlocks = " + (current / 1000.0) + " blocks)"), false);
+                return current;
+            })
+        );
+        
+        // slashOutline
+        literal.then(net.minecraft.commands.Commands.literal("slashOutline")
+            .then(net.minecraft.commands.Commands.argument("value", IntegerArgumentType.integer(0, 1000))
+                .executes(ctx -> {
+                    int value = IntegerArgumentType.getInteger(ctx, "value");
+                    ctx.getSource().getServer().getGameRules().getRule(SLASH_OUTLINE).set(value, ctx.getSource().getServer());
+                    ctx.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal("Set slashOutline to " + value + " (milliBlocks = " + (value / 1000.0) + " blocks)"), true);
+                    return value;
+                })
+            )
+            .executes(ctx -> {
+                int current = ctx.getSource().getServer().getGameRules().getInt(SLASH_OUTLINE);
+                ctx.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal("Current slashOutline: " + current + " (milliBlocks = " + (current / 1000.0) + " blocks)"), false);
+                return current;
+            })
+        );
+        
+        // slashDamage
+        literal.then(net.minecraft.commands.Commands.literal("slashDamage")
+            .then(net.minecraft.commands.Commands.argument("value", IntegerArgumentType.integer(0, 100000))
+                .executes(ctx -> {
+                    int value = IntegerArgumentType.getInteger(ctx, "value");
+                    ctx.getSource().getServer().getGameRules().getRule(SLASH_DAMAGE).set(value, ctx.getSource().getServer());
+                    ctx.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal("Set slashDamage to " + value + " (milliHearts = " + (value / 1000.0) + " hearts = " + (value / 500.0) + " HP)"), true);
+                    return value;
+                })
+            )
+            .executes(ctx -> {
+                int current = ctx.getSource().getServer().getGameRules().getInt(SLASH_DAMAGE);
+                ctx.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal("Current slashDamage: " + current + " (milliHearts = " + (current / 1000.0) + " hearts = " + (current / 500.0) + " HP)"), false);
+                return current;
+            })
+        );
+        
+        dispatcher.register(literal);
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {
