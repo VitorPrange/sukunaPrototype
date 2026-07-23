@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Manages visual effects - spawning, ticking, and rendering.
@@ -35,18 +36,21 @@ public class VFXManager {
     private static final Logger LOGGER = LoggerFactory.getLogger("SukunaPrototypeVFX");
     
     private static final ConcurrentLinkedQueue<VFXInstance> pendingEffects = new ConcurrentLinkedQueue<>();
-    private static final List<VFXInstance> activeEffects = new ArrayList<>();
+    private static final CopyOnWriteArrayList<VFXInstance> activeEffects = new CopyOnWriteArrayList<>();
     private static final List<VFXInstance> toRemove = new ArrayList<>();
-    private static final int MAX_EFFECTS = 10000;
+    private static final int MAX_EFFECTS = 1000;
+    private static boolean needsSort = false; // Dirty flag: only sort when effects are added/removed
     
     public static void init() {
         LOGGER.info("VFX Manager initialized - ready for effects");
     }
     
     public static void spawn(VFXInstance effect) {
-        LOGGER.info("[VFXManager] spawn() called for effect: {} (class: {})", effect, effect.getClass().getSimpleName());
-        LOGGER.info("[VFXManager] Effect details - pos: {}, age: {}, maxAge: {}, color: 0x{:08X}", 
-            effect.getPosition(), effect.getAge(), effect.getMaxAge(), effect.getColor());
+        if (Config.ENABLE_DEBUG_LOGGING.get()) {
+            LOGGER.info("[VFXManager] spawn() called for effect: {} (class: {})", effect, effect.getClass().getSimpleName());
+            LOGGER.info("[VFXManager] Effect details - pos: {}, age: {}, maxAge: {}, color: 0x{:08X}", 
+                effect.getPosition(), effect.getAge(), effect.getMaxAge(), effect.getColor());
+        }
         
         if (activeEffects.size() + pendingEffects.size() >= MAX_EFFECTS) {
             LOGGER.warn("[VFXManager] Max effects reached ({}), removing oldest", MAX_EFFECTS);
@@ -55,11 +59,15 @@ public class VFXManager {
             }
         }
         pendingEffects.add(effect);
-        LOGGER.info("[VFXManager] Effect added to pending queue. Pending: {}, Active: {}", pendingEffects.size(), activeEffects.size());
+        if (Config.ENABLE_DEBUG_LOGGING.get()) {
+            LOGGER.info("[VFXManager] Effect added to pending queue. Pending: {}, Active: {}", pendingEffects.size(), activeEffects.size());
+        }
     }
     
     public static void spawnSlashAtEntity(Entity target) {
-        LOGGER.info("[VFXManager] spawnSlashAtEntity called for: {}", target);
+        if (Config.ENABLE_DEBUG_LOGGING.get()) {
+            LOGGER.info("[VFXManager] spawnSlashAtEntity called for: {}", target);
+        }
         if (target == null || target.level() == null || !(target.level() instanceof ClientLevel)) {
             LOGGER.warn("[VFXManager] Invalid target or level");
             return;
@@ -89,12 +97,17 @@ public class VFXManager {
         int processed = 0;
         while ((effect = pendingEffects.poll()) != null) {
             activeEffects.add(effect);
+            needsSort = true; // Mark for sorting since list changed
             processed++;
-            LOGGER.info("[VFXManager] Moved effect from pending to active: {} (total active: {})", 
-                effect.getClass().getSimpleName(), activeEffects.size());
+            if (Config.ENABLE_DEBUG_LOGGING.get()) {
+                LOGGER.debug("[VFXManager] Moved effect from pending to active: {} (total active: {})", 
+                    effect.getClass().getSimpleName(), activeEffects.size());
+            }
         }
         if (processed > 0) {
-            LOGGER.debug("[VFXManager] Processed {} pending effects", processed);
+            if (Config.ENABLE_DEBUG_LOGGING.get()) {
+                LOGGER.debug("[VFXManager] Processed {} pending effects", processed);
+            }
         }
         
         ClientLevel level = Minecraft.getInstance().level;
@@ -103,21 +116,34 @@ public class VFXManager {
             for (VFXInstance activeEffect : activeEffects) {
                 if (activeEffect.tick(level)) {
                     toRemove.add(activeEffect);
-                    LOGGER.debug("[VFXManager] Effect marked for removal: {} (age: {}/{})", 
-                        activeEffect.getClass().getSimpleName(), activeEffect.getAge(), activeEffect.getMaxAge());
+                    if (Config.ENABLE_DEBUG_LOGGING.get()) {
+                        LOGGER.debug("[VFXManager] Effect marked for removal: {} (age: {}/{})", 
+                            activeEffect.getClass().getSimpleName(), activeEffect.getAge(), activeEffect.getMaxAge());
+                    }
                 }
             }
             if (!toRemove.isEmpty()) {
-                LOGGER.info("[VFXManager] Removing {} expired effects", toRemove.size());
+                if (Config.ENABLE_DEBUG_LOGGING.get()) {
+                    LOGGER.info("[VFXManager] Removing {} expired effects", toRemove.size());
+                }
                 activeEffects.removeAll(toRemove);
+                needsSort = true; // Mark for sorting since list changed
             }
         }
         
-        activeEffects.sort(Comparator.comparingInt(VFXInstance::getRenderLayer));
+        // Only sort when effects were added or removed this tick (performance optimization)
+        if (needsSort) {
+            // CopyOnWriteArrayList doesn't support sort(), so create sorted snapshot
+            List<VFXInstance> sorted = new ArrayList<>(activeEffects);
+            sorted.sort(Comparator.comparingInt(VFXInstance::getRenderLayer));
+            activeEffects.clear();
+            activeEffects.addAll(sorted);
+            needsSort = false;
+        }
     }
     
     @SubscribeEvent
-    public static void onRenderLevelStage(RenderLevelStageEvent event) {
+    public static void onRenderLevel(RenderLevelStageEvent event) {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) {
             return;
         }
@@ -126,7 +152,9 @@ public class VFXManager {
             return;
         }
         
-        LOGGER.debug("[VFXManager] Rendering {} active effects at AFTER_PARTICLES stage", activeEffects.size());
+        if (Config.ENABLE_DEBUG_LOGGING.get()) {
+            LOGGER.debug("[VFXManager] Rendering {} active effects at AFTER_PARTICLES stage", activeEffects.size());
+        }
         
         Minecraft mc = Minecraft.getInstance();
         ClientLevel level = mc.level;
@@ -148,8 +176,10 @@ public class VFXManager {
         int culled = 0;
         for (VFXInstance activeEffect : activeEffects) {
             if (!activeEffect.shouldCull(frustum, partialTickValue)) {
-                LOGGER.debug("[VFXManager] Rendering effect: {} at pos: {}", 
-                    activeEffect.getClass().getSimpleName(), activeEffect.getRenderPosition(partialTickValue));
+                if (Config.ENABLE_DEBUG_LOGGING.get()) {
+                    LOGGER.debug("[VFXManager] Rendering effect: {} at pos: {}", 
+                        activeEffect.getClass().getSimpleName(), activeEffect.getRenderPosition(partialTickValue));
+                }
                 activeEffect.render(poseStack, bufferSource, partialTickValue, camera);
                 rendered++;
             } else {
@@ -158,18 +188,23 @@ public class VFXManager {
         }
         
         if (rendered > 0 || culled > 0) {
-            LOGGER.info("[VFXManager] Render pass complete - rendered: {}, culled: {}, total active: {}", 
-                rendered, culled, activeEffects.size());
+            if (Config.ENABLE_DEBUG_LOGGING.get()) {
+                LOGGER.debug("[VFXManager] Render pass complete - rendered: {}, culled: {}, total active: {}", 
+                    rendered, culled, activeEffects.size());
+            }
         }
+    }
+    
+    
+    public static void clearAll() {
+        if (Config.ENABLE_DEBUG_LOGGING.get()) {
+            LOGGER.info("[VFXManager] Clearing all effects (active: {}, pending: {})", activeEffects.size(), pendingEffects.size());
+        }
+        activeEffects.clear();
+        pendingEffects.clear();
     }
     
     public static int getActiveEffectCount() {
         return activeEffects.size();
-    }
-    
-    public static void clearAll() {
-        LOGGER.info("[VFXManager] Clearing all effects (active: {}, pending: {})", activeEffects.size(), pendingEffects.size());
-        activeEffects.clear();
-        pendingEffects.clear();
     }
 }

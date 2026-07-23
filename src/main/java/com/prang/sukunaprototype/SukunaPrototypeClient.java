@@ -50,6 +50,7 @@ public class SukunaPrototypeClient {
     private static boolean holding = false;
     private static int holdTicks = 0;
     private static int nextSlashTick = 0;
+    private static boolean wasKeyDown = false;
 
     // Soft-lock targeting: how far (in blocks) we search for a target along
     // the player's look direction, and how far off-center (in blocks) an
@@ -88,6 +89,34 @@ public class SukunaPrototypeClient {
         event.register(SLASH_KEY);
 
         LOGGER.info("[SlashVFX] Key bindings registered: X=Random All (tap) / hold to ramp");
+    }
+
+    // Detect key release on focus loss / Esc / alt-tab by tracking previous state in Pre tick
+    // Also clear hold state when GUI opens or window loses focus
+    @SubscribeEvent
+    static void onClientTickPre(ClientTickEvent.Pre event) {
+        Minecraft mc = Minecraft.getInstance();
+        
+        // Clear hold if GUI opened or window lost focus
+        if (holding && (mc.screen != null || !mc.isWindowActive())) {
+            holding = false;
+            holdTicks = 0;
+            nextSlashTick = 0;
+        }
+        
+        boolean isDown = SLASH_KEY.isDown();
+        if (wasKeyDown && !isDown) {
+            keyReleased();
+        }
+        wasKeyDown = isDown;
+    }
+
+    private static void keyReleased() {
+        if (holding) {
+            holding = false;
+            holdTicks = 0;
+            nextSlashTick = 0;
+        }
     }
 
     @SubscribeEvent
@@ -187,14 +216,18 @@ public class SukunaPrototypeClient {
         spawnSlashAtTarget(scheme, "RANDOM(" + schemeName(scheme) + ")");
     }
 
+    private static final java.util.Map<SlashEffect.ColorScheme, String> SCHEME_NAMES = 
+            java.util.Map.of(
+                SlashEffect.BLACK_WHITE, "BLACK_WHITE",
+                SlashEffect.BLACK_RED, "BLACK_RED",
+                SlashEffect.RED_WHITE, "RED_WHITE",
+                SlashEffect.RED_BLACK, "RED_BLACK",
+                SlashEffect.WHITE_BLACK, "WHITE_BLACK",
+                SlashEffect.WHITE_RED, "WHITE_RED"
+            );
+
     private static String schemeName(SlashEffect.ColorScheme scheme) {
-        if (scheme == SlashEffect.BLACK_WHITE) return "BLACK_WHITE";
-        if (scheme == SlashEffect.BLACK_RED) return "BLACK_RED";
-        if (scheme == SlashEffect.RED_WHITE) return "RED_WHITE";
-        if (scheme == SlashEffect.RED_BLACK) return "RED_BLACK";
-        if (scheme == SlashEffect.WHITE_BLACK) return "WHITE_BLACK";
-        if (scheme == SlashEffect.WHITE_RED) return "WHITE_RED";
-        return "?";
+        return SCHEME_NAMES.getOrDefault(scheme, "?");
     }
 
     // Reads the live slash damage from gamerule (millihearts/1000) or config fallback.

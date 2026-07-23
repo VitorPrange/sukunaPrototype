@@ -211,7 +211,7 @@ public class SlashEffect extends VFXInstance {
             this.fullBright = true;
             this.renderLayer = debugMode ? 2000 : 1000;
 
-            setCullingRadius(length * 0.6f);
+            setCullingRadius(length * 0.6f + length * 0.5f * Mth.sin(BLADE_TILT));
             computeBlade();
             
             // Capture camera basis at spawn time so slash stays fixed in world space
@@ -367,57 +367,32 @@ public class SlashEffect extends VFXInstance {
         float damageAmount = damage * 2.0f; 
         LOGGER.info("[SlashEffect.applyDamage] Damage amount: {} HP (hearts={})", damageAmount, damage);
 
-        // In singleplayer, apply damage on the SERVER level (integrated server)
-        // Client-level entities are visual mirrors; real damage happens on the server.
-        MinecraftServer server = mc.getSingleplayerServer();
-        if (server != null) {
-            // Execute on server thread
-            server.execute(() -> {
-                ServerLevel serverLevel = server.overworld(); // or get the correct dimension
-                // Get the server-side player for the damage source
-                ServerPlayer serverPlayer = server.getPlayerList().getPlayer(mc.player.getUUID());
-                if (serverPlayer == null) {
-                    LOGGER.warn("[SlashEffect.applyDamage] Could not find server player for UUID {}", mc.player.getUUID());
-                }
-                for (LivingEntity target : targets) {
-                    UUID uuid = target.getUUID();
-                    if (hitEntities.add(uuid)) {
-                        // Find the corresponding entity on the server
-                        Entity serverEntity = serverLevel.getEntity(uuid);
-                        if (serverEntity instanceof LivingEntity serverTarget) {
-                            LOGGER.info("[SlashEffect.applyDamage] SERVER HURTING target={} uuid={} damage={}", serverTarget.getName().getString(), uuid, damageAmount);
-                            // Use a damage source that works regardless of player reference
-                            DamageSource source = serverLevel.damageSources().mobAttack(serverPlayer != null ? serverPlayer : serverTarget);
-                            if (serverPlayer == null) {
-                                // Fallback to generic magic damage if no player found
-                                source = serverLevel.damageSources().magic();
-                            }
-                            // Clear invulnerability frames so rapid slashes all deal damage
-                            serverTarget.invulnerableTime = 0;
-                            boolean hurtResult = serverTarget.hurt(source, damageAmount);
-                            LOGGER.info("[SlashEffect.applyDamage] server hurt() returned: {} (source: {})", hurtResult, source);
-                        } else {
-                            LOGGER.warn("[SlashEffect.applyDamage] Could not find server entity for uuid {}", uuid);
-                        }
-                    } else {
-                        LOGGER.info("[SlashEffect.applyDamage] SKIP: already hit this slash (uuid={})", target.getUUID());
-                    }
-                }
-            });
-        } else {
-            // Fallback: try client level (for non-integrated-server cases)
-            LOGGER.warn("[SlashEffect.applyDamage] No integrated server, falling back to client level");
-            for (LivingEntity target : targets) {
-                UUID uuid = target.getUUID();
-                if (hitEntities.add(uuid)) {
-                    LOGGER.info("[SlashEffect.applyDamage] HURTING target={} uuid={} damage={}", target.getName().getString(), uuid, damageAmount);
-                    DamageSource source = level.damageSources().playerAttack(mc.player);
-                    boolean hurtResult = target.hurt(source, damageAmount);
-                    LOGGER.info("[SlashEffect.applyDamage] hurt() returned: {}", hurtResult);
-                } else {
-                    LOGGER.info("[SlashEffect.applyDamage] SKIP: already hit this slash (uuid={})", uuid);
-                }
-            }
+        // Send slash damage packet to server for authoritative damage application
+        // Server validates position, angle, damage amount, and target entities
+        UUID slashId = UUID.randomUUID();
+        Vec3 direction = new Vec3(lengthDir.x, lengthDir.y, lengthDir.z).normalize();
+        List<UUID> targetUuids = targets.stream().map(Entity::getUUID).toList();
+        
+        SlashDamagePacket packet = new SlashDamagePacket(
+            slashId,
+            renderPos,
+            direction,
+            length,
+            thick,
+            damage, // damage in hearts
+            targetUuids
+        );
+
+        LOGGER.info("[SlashEffect.applyDamage] Sending SlashDamagePacket: slashId={} targets={} pos={} dir={} len={} width={} dmg={}", 
+            slashId, targetUuids.size(), renderPos, direction, length, thick, damage);
+        
+        // Send packet to server (works for both integrated and dedicated servers)
+        PacketDistributor.sendToServer(packet);
+
+        // Track hit entities locally to prevent duplicate client-side processing
+        // (server is authoritative, but this prevents visual double-hit if packet is re-sent)
+        for (LivingEntity target : targets) {
+            hitEntities.add(target.getUUID());
         }
     }
 
@@ -656,3 +631,5 @@ public class SlashEffect extends VFXInstance {
         public void spawn() { VFXManager.spawn(build()); }
     }
 }
+++ import com.prang.sukunaprototype.network.SlashDamagePacket;
+++ import net.neoforged.neoforge.network.PacketDistributor;
