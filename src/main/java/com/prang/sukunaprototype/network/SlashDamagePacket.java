@@ -6,7 +6,7 @@ import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.network.protocol.common.custom.PayloadContext;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -68,22 +68,26 @@ public record SlashDamagePacket(
             64 // max 64 entities per slash
         );
 
-    public static final StreamCodec<ByteBuf, SlashDamagePacket> STREAM_CODEC = StreamCodec.composite(
-        UUID_STREAM_CODEC,
-        SlashDamagePacket::slashId,
-        VEC3_STREAM_CODEC,
-        SlashDamagePacket::position,
-        VEC3_STREAM_CODEC,
-        SlashDamagePacket::direction,
-        ByteBufCodecs.FLOAT,
-        SlashDamagePacket::length,
-        ByteBufCodecs.FLOAT,
-        SlashDamagePacket::width,
-        ByteBufCodecs.FLOAT,
-        SlashDamagePacket::damage,
-        UUID_LIST_STREAM_CODEC,
-        SlashDamagePacket::hitEntities,
-        SlashDamagePacket::new
+    public static final StreamCodec<ByteBuf, SlashDamagePacket> STREAM_CODEC = StreamCodec.of(
+        (buf, packet) -> {
+            UUID_STREAM_CODEC.encode(buf, packet.slashId());
+            VEC3_STREAM_CODEC.encode(buf, packet.position());
+            VEC3_STREAM_CODEC.encode(buf, packet.direction());
+            ByteBufCodecs.FLOAT.encode(buf, packet.length());
+            ByteBufCodecs.FLOAT.encode(buf, packet.width());
+            ByteBufCodecs.FLOAT.encode(buf, packet.damage());
+            UUID_LIST_STREAM_CODEC.encode(buf, packet.hitEntities());
+        },
+        (buf) -> {
+            UUID slashId = UUID_STREAM_CODEC.decode(buf);
+            Vec3 position = VEC3_STREAM_CODEC.decode(buf);
+            Vec3 direction = VEC3_STREAM_CODEC.decode(buf);
+            float length = ByteBufCodecs.FLOAT.decode(buf);
+            float width = ByteBufCodecs.FLOAT.decode(buf);
+            float damage = ByteBufCodecs.FLOAT.decode(buf);
+            List<UUID> hitEntities = UUID_LIST_STREAM_CODEC.decode(buf);
+            return new SlashDamagePacket(slashId, position, direction, length, width, damage, hitEntities);
+        }
     );
 
     @Override
@@ -185,9 +189,9 @@ public record SlashDamagePacket(
      * Server-side packet handler. Validates the packet and applies damage to valid targets.
      * Runs on the server thread via context.enqueueWork().
      */
-    public static void handleOnServer(SlashDamagePacket packet, PayloadContext context) {
+    public static void handleOnServer(SlashDamagePacket packet, IPayloadContext context) {
         context.enqueueWork(() -> {
-            ServerPlayer player = context.player();
+            ServerPlayer player = (ServerPlayer) context.player();
             if (player == null) {
                 SukunaPrototype.LOGGER.warn("[SlashDamagePacket] No player in context");
                 return;

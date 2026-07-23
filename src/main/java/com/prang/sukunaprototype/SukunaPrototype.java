@@ -93,7 +93,7 @@ public class SukunaPrototype {
     }
 
     private void registerGameRuleCommand(
-            net.minecraft.commands.builders.LiteralArgumentBuilder<net.minecraft.commands.CommandSourceStack> parent,
+            com.mojang.brigadier.builder.LiteralArgumentBuilder<net.minecraft.commands.CommandSourceStack> parent,
             String name,
             GameRules.Key<GameRules.IntegerValue> gameruleKey,
             int minValue,
@@ -115,11 +115,12 @@ public class SukunaPrototype {
                 ctx.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal(msg), false);
                 return current;
             })
+        );
     }
 
     // Overloaded helper for boolean GameRules
     private void registerGameRuleCommand(
-            net.minecraft.commands.builders.LiteralArgumentBuilder<net.minecraft.commands.CommandSourceStack> parent,
+            com.mojang.brigadier.builder.LiteralArgumentBuilder<net.minecraft.commands.CommandSourceStack> parent,
             String name,
             GameRules.Key<GameRules.BooleanValue> gameruleKey) {
         parent.then(net.minecraft.commands.Commands.literal(name)
@@ -143,7 +144,7 @@ public class SukunaPrototype {
         LOGGER.info("HELLO FROM COMMON SETUP");
         LOGGER.info("Slash VFX mod common setup complete");
     }
-    }
+
     // You can use SubscribeEvent and let the Event Bus discover methods to call
     @SubscribeEvent
     public void onServerStarting(ServerStartingEvent event) {

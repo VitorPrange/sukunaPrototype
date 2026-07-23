@@ -10,7 +10,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
  * Registers custom packet payload handlers for client-server communication.
  * Runs on the mod event bus (both client and server).
  */
-@EventBusSubscriber(modid = SukunaPrototype.MODID, bus = EventBusSubscriber.Bus.MOD)
+@EventBusSubscriber(modid = SukunaPrototype.MODID)
 public class NetworkHandler {
 
     /**

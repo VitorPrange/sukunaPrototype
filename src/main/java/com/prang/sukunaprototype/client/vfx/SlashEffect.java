@@ -29,6 +29,8 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.level.ClipContext;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
+import com.prang.sukunaprototype.network.SlashDamagePacket;
+import net.neoforged.neoforge.network.PacketDistributor;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
@@ -631,5 +633,3 @@ public class SlashEffect extends VFXInstance {
         public void spawn() { VFXManager.spawn(build()); }
     }
 }
-++ import com.prang.sukunaprototype.network.SlashDamagePacket;
-++ import net.neoforged.neoforge.network.PacketDistributor;
