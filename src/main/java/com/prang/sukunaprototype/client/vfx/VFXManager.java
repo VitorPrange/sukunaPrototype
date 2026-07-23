@@ -3,6 +3,7 @@ package com.prang.sukunaprototype.client.vfx;
 import com.prang.sukunaprototype.Config;
 import com.prang.sukunaprototype.SukunaPrototype;
 import com.prang.sukunaprototype.SukunaPrototypeClient;
+import static com.prang.sukunaprototype.VFXConstants.*;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
@@ -38,11 +39,32 @@ public class VFXManager {
     private static final ConcurrentLinkedQueue<VFXInstance> pendingEffects = new ConcurrentLinkedQueue<>();
     private static final CopyOnWriteArrayList<VFXInstance> activeEffects = new CopyOnWriteArrayList<>();
     private static final List<VFXInstance> toRemove = new ArrayList<>();
-    private static final int MAX_EFFECTS = 1000;
-    private static boolean needsSort = false; // Dirty flag: only sort when effects are added/removed
     
     public static void init() {
         LOGGER.info("VFX Manager initialized - ready for effects");
+    }
+    
+    /**
+     * Insert effect in sorted order by render layer using binary search.
+     * This maintains sorted order without expensive batch sorting.
+     */
+    private static void insertSorted(VFXInstance effect) {
+        int renderLayer = effect.getRenderLayer();
+        int left = 0;
+        int right = activeEffects.size();
+        
+        // Binary search for insertion position
+        while (left < right) {
+            int mid = (left + right) / 2;
+            if (activeEffects.get(mid).getRenderLayer() < renderLayer) {
+                left = mid + 1;
+            } else {
+                right = mid;
+            }
+        }
+        
+        // Insert at the found position
+        activeEffects.add(left, effect);
     }
     
     public static void spawn(VFXInstance effect) {
@@ -96,8 +118,8 @@ public class VFXManager {
         VFXInstance effect;
         int processed = 0;
         while ((effect = pendingEffects.poll()) != null) {
-            activeEffects.add(effect);
-            needsSort = true; // Mark for sorting since list changed
+            // Insert effect in sorted order by render layer (binary search)
+            insertSorted(effect);
             processed++;
             if (Config.ENABLE_DEBUG_LOGGING.get()) {
                 LOGGER.debug("[VFXManager] Moved effect from pending to active: {} (total active: {})", 
@@ -127,18 +149,7 @@ public class VFXManager {
                     LOGGER.info("[VFXManager] Removing {} expired effects", toRemove.size());
                 }
                 activeEffects.removeAll(toRemove);
-                needsSort = true; // Mark for sorting since list changed
             }
-        }
-        
-        // Only sort when effects were added or removed this tick (performance optimization)
-        if (needsSort) {
-            // CopyOnWriteArrayList doesn't support sort(), so create sorted snapshot
-            List<VFXInstance> sorted = new ArrayList<>(activeEffects);
-            sorted.sort(Comparator.comparingInt(VFXInstance::getRenderLayer));
-            activeEffects.clear();
-            activeEffects.addAll(sorted);
-            needsSort = false;
         }
     }
     
@@ -172,6 +183,9 @@ public class VFXManager {
         
         float partialTickValue = (float) partialTick.getGameTimeDeltaTicks();
         
+        // Track render timing for debug overlay
+        long startTime = System.nanoTime();
+        
         int rendered = 0;
         int culled = 0;
         for (VFXInstance activeEffect : activeEffects) {
@@ -186,6 +200,10 @@ public class VFXManager {
                 culled++;
             }
         }
+        
+        // Update debug overlay stats
+        long renderTime = System.nanoTime() - startTime;
+        com.prang.sukunaprototype.client.debug.VFXDebugRenderer.updateStats(renderTime, rendered, culled);
         
         if (rendered > 0 || culled > 0) {
             if (Config.ENABLE_DEBUG_LOGGING.get()) {

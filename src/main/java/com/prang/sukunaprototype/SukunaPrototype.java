@@ -61,6 +61,11 @@ public class SukunaPrototype {
     public static final GameRules.Key<GameRules.BooleanValue> SLASH_IGNORE_INVULNERABLE =
             GameRules.register("sukunaprototype:slashIgnoreInvulnerable", GameRules.Category.MISC, GameRules.BooleanValue.create(false));
 
+    // Duration in seconds that the damage meter stays visible after dealing damage. Default 5 seconds.
+    // Timer resets each time new damage is dealt, accumulating the total.
+    public static final GameRules.Key<GameRules.IntegerValue> DAMAGE_METER_DURATION =
+            GameRules.register("sukunaprototype:damageMeterDuration", GameRules.Category.MISC, GameRules.IntegerValue.create(5));
+
     // The constructor for the mod class is the first code that is run when your mod is loaded.
     // FML will recognize some parameter types like IEventBus or ModContainer and pass them in automatically.
     public SukunaPrototype(IEventBus modEventBus, ModContainer modContainer) {

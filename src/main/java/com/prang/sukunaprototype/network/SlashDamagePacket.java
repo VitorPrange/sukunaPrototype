@@ -229,6 +229,11 @@ public record SlashDamagePacket(
                     DamageSource source = serverLevel.damageSources().playerAttack(player);
                     boolean hurtResult = target.hurt(source, damageAmount);
                     
+                    // Reset invulnerability again after hurt() to allow rapid consecutive hits
+                    if (ignoreInvulnerable) {
+                        target.invulnerableTime = 0;
+                    }
+                    
                     SukunaPrototype.LOGGER.info("[SlashDamagePacket] Server hurt target={} uuid={} damage={} result={}", 
                         target.getName().getString(), uuid, damageAmount, hurtResult);
                 } else {

@@ -3,6 +3,8 @@ package com.prang.sukunaprototype.client.vfx;
 import com.prang.sukunaprototype.Config;
 import com.prang.sukunaprototype.SukunaPrototype;
 import com.prang.sukunaprototype.SukunaPrototypeClient;
+import com.prang.sukunaprototype.client.hud.DamageMeter;
+import static com.prang.sukunaprototype.VFXConstants.*;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -62,7 +64,7 @@ import java.util.ArrayList;
 public class SlashEffect extends VFXInstance {
     private static final Logger LOGGER = LoggerFactory.getLogger("SlashEffect");
     
-    private static final int SEGMENTS = 16;
+    // SEGMENTS constant imported from VFXConstants (value: 16)
     private static final Random RANDOM = new Random();
     
     // Store camera basis at spawn time so slash stays fixed in world space
@@ -75,14 +77,14 @@ public class SlashEffect extends VFXInstance {
     // Tighter band so the slash stays LONG up close (higher min) and THIN far
     // away (lower max) instead of shrinking to nothing in your face or ballooning
     // out at range.
-    private static final float SIZE_REF_DIST = 12.0f;   // distance (blocks) where scale == 1.0
-    private static final float SIZE_MIN_SCALE = 0.85f;  // closest clamp (up in your face) - thinned
-    private static final float SIZE_MAX_SCALE = 1.15f;  // farthest clamp - barely thicker, not bloated
+    // SIZE_REF_DIST constant imported from VFXConstants (value: 12.0f)
+    // SIZE_MIN_SCALE constant imported from VFXConstants (value: 0.85f)
+    // SIZE_MAX_SCALE constant imported from VFXConstants (value: 1.15f)
     // Slight 3D tilt of the blade out of the screen plane (radians). This makes the
     // slash's length run partly along the view axis, so different parts sit at
     // different depths -> real PARTIAL occlusion when it meshes into a block/mob
     // (instead of a flat billboard's all-or-nothing depth behaviour).
-    private static final float BLADE_TILT = 0.18f;
+    // BLADE_TILT constant imported from VFXConstants (value: 0.18f)
     
     // Color scheme
     public static class ColorScheme {
@@ -238,9 +240,9 @@ public class SlashEffect extends VFXInstance {
         }
     
     private void computeBlade() {
-        lengthOffsets = new float[SEGMENTS + 1];
-        for (int i = 0; i <= SEGMENTS; i++) {
-            float t = (float) i / SEGMENTS;
+        lengthOffsets = new float[SLASH_SEGMENTS + 1];
+        for (int i = 0; i <= SLASH_SEGMENTS; i++) {
+            float t = (float) i / SLASH_SEGMENTS;
             lengthOffsets[i] = (t - 0.5f) * length;
         }
     }
@@ -390,6 +392,9 @@ public class SlashEffect extends VFXInstance {
         
         // Send packet to server (works for both integrated and dedicated servers)
         PacketDistributor.sendToServer(packet);
+        
+        // Update client-side damage meter (optimistic - shows expected damage)
+        DamageMeter.addDamage(damage);
 
         // Track hit entities locally to prevent duplicate client-side processing
         // (server is authoritative, but this prevents visual double-hit if packet is re-sent)
@@ -495,7 +500,7 @@ public class SlashEffect extends VFXInstance {
         // Per-segment width taper (pointed ends, widest at center), scaled live.
         // t-based so thickness is never baked into stored geometry.
         java.util.function.Function<Integer, Float> segWidth = (i) -> {
-            float t = (float) i / SEGMENTS;
+            float t = (float) i / SLASH_SEGMENTS;
             float d = Math.abs(t - 0.5f) * 2.0f;
             return thick * (1.0f - d * d);
         };
@@ -543,10 +548,10 @@ public class SlashEffect extends VFXInstance {
     private void renderBlade(VertexConsumer vc, Matrix4f matrix, float r, float g, float b, float alpha,
                               float scale, float extraWidth, float minRim,
                               java.util.function.Function<Integer, Float> segWidth, Vector3f lengthDir, Vector3f widthDir) {
-        for (int i = 0; i <= SEGMENTS; i++) {
+        for (int i = 0; i <= SLASH_SEGMENTS; i++) {
             float lenOffset = lengthOffsets[i] * scale;
             // taper (1 - dist^2) shapes the pointy ends.
-            float taper = 1.0f - Math.abs((float) i / SEGMENTS - 0.5f) * 2.0f;
+            float taper = 1.0f - Math.abs((float) i / SLASH_SEGMENTS - 0.5f) * 2.0f;
             taper = taper * taper;
             // Outline rim keeps a minimum fraction (minRim) at the tips so the
             // neon edge stays visible to the very point; the solid core (extraWidth=0)

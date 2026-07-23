@@ -5,6 +5,14 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
+/**
+ * Configuration for the Sukuna Prototype mod.
+ * 
+ * <p><b>Important:</b> GameRules take precedence over config values at runtime.
+ * Config values serve as defaults, but live gameplay uses gamerule values which
+ * can be changed with /gamerule or /sukunaprototype commands without restarting.
+ * See {@link SukunaPrototype} for gamerule definitions.</p>
+ */
 public class Config {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
@@ -47,6 +55,32 @@ public class Config {
             .comment("Enable verbose debug logging for VFX system (default false to avoid log spam).")
             .define("enableDebugLogging", false);
 
+    // --- Damage Meter HUD Configuration ---
+    
+    public static final ModConfigSpec.EnumValue<DamageMeterAnchor> DAMAGE_METER_ANCHOR = BUILDER
+            .comment("Anchor position for damage meter HUD (TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT, TOP_CENTER, BOTTOM_CENTER)")
+            .defineEnum("damageMeterAnchor", DamageMeterAnchor.TOP_RIGHT);
+    
+    public static final ModConfigSpec.IntValue DAMAGE_METER_X_OFFSET = BUILDER
+            .comment("Horizontal offset in pixels from anchor position (can be negative)")
+            .defineInRange("damageMeterXOffset", 0, -1000, 1000);
+    
+    public static final ModConfigSpec.IntValue DAMAGE_METER_Y_OFFSET = BUILDER
+            .comment("Vertical offset in pixels from anchor position (can be negative)")
+            .defineInRange("damageMeterYOffset", 0, -1000, 1000);
+
     static final ModConfigSpec SPEC = BUILDER.build();
+    
+    /**
+     * Anchor positions for damage meter HUD.
+     */
+    public enum DamageMeterAnchor {
+        TOP_LEFT,
+        TOP_RIGHT,
+        BOTTOM_LEFT,
+        BOTTOM_RIGHT,
+        TOP_CENTER,
+        BOTTOM_CENTER
+    }
 }
 

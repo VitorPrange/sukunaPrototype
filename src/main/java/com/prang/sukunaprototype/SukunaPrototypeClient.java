@@ -2,6 +2,7 @@ package com.prang.sukunaprototype;
 
 import com.prang.sukunaprototype.client.vfx.SlashEffect;
 import com.prang.sukunaprototype.client.vfx.VFXManager;
+import static com.prang.sukunaprototype.VFXConstants.*;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.server.MinecraftServer;
@@ -43,20 +44,21 @@ public class SukunaPrototypeClient {
     // Hold-ramp tuning (in ticks @ 20tps): starts at HOLD_SLOW, eases (quadratic)
     // up to the gamerule cap (slashMaxRate) over HOLD_RAMP ticks. Short ramp so
     // the rate actually reaches the gamerule value instead of plateauing below it.
-    private static final int HOLD_SLOW = 10;     // start interval: 2 slashes/sec
-    private static final int HOLD_RAMP = 20;     // ticks to reach the slashMaxRate cap (1s held)
+    // Constants imported from VFXConstants: HOLD_SLOW = 10, HOLD_RAMP = 20
 
-    // Hold state
+    //Hold state
     private static boolean holding = false;
     private static int holdTicks = 0;
     private static int nextSlashTick = 0;
     private static boolean wasKeyDown = false;
+    
+    // Target visualization
+    private static Entity currentTarget = null;
 
     // Soft-lock targeting: how far (in blocks) we search for a target along
     // the player's look direction, and how far off-center (in blocks) an
     // entity can be from that aim line and still count as "targeted".
-    private static final double SOFT_LOCK_RANGE = 50.0;
-    private static final double SOFT_LOCK_TOLERANCE = 2.5;
+    // Constants imported from VFXConstants: SOFT_LOCK_RANGE = 50.0, SOFT_LOCK_TOLERANCE = 2.5
 
     public SukunaPrototypeClient(ModContainer container) {
         container.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
@@ -122,6 +124,17 @@ public class SukunaPrototypeClient {
     @SubscribeEvent
     static void onKeyInput(InputEvent.Key event) {
         if (event.getAction() != 1) return;          // only initial press fires
+        
+        // F3+V toggle for debug overlay
+        if (event.getKey() == InputConstants.KEY_V) {
+            Minecraft mc = Minecraft.getInstance();
+            // Check if F3 is held
+            if (InputConstants.isKeyDown(mc.getWindow().getWindow(), InputConstants.KEY_F3)) {
+                com.prang.sukunaprototype.client.debug.VFXDebugRenderer.toggle();
+                return;
+            }
+        }
+        
         if (!SLASH_KEY.isDown()) return;              // respects the key bound in Controls
 
         if (!holding) {
@@ -135,6 +148,15 @@ public class SukunaPrototypeClient {
     // Drives the consecutive-slash ramp while the bound key is held.
     @SubscribeEvent
     static void onClientTick(ClientTickEvent.Post event) {
+        Minecraft mc = Minecraft.getInstance();
+        
+        // Update target visualization while key is held
+        if (SLASH_KEY.isDown() && mc.player != null && mc.level != null) {
+            currentTarget = findSoftTarget(mc, SOFT_LOCK_RANGE, SOFT_LOCK_TOLERANCE);
+        } else {
+            currentTarget = null;
+        }
+        
         if (!SLASH_KEY.isDown()) {                    // key released (or unbound): stop
             if (holding) {
                 holding = false;
@@ -322,5 +344,45 @@ public class SukunaPrototypeClient {
         }
 
         return best;
+    }
+    
+    /**
+     * Render translucent outline around the currently targeted entity.
+     * Shows which entity will be hit when slash key is pressed.
+     */
+    @SubscribeEvent
+    static void onRenderLevel(net.neoforged.neoforge.client.event.RenderLevelStageEvent event) {
+        if (event.getStage() != net.neoforged.neoforge.client.event.RenderLevelStageEvent.Stage.AFTER_ENTITIES) {
+            return;
+        }
+        
+        if (currentTarget == null || !currentTarget.isAlive()) {
+            return;
+        }
+        
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) {
+            return;
+        }
+        
+        // Render translucent bounding box around target
+        var poseStack = event.getPoseStack();
+        var camera = event.getCamera();
+        Vec3 cameraPos = camera.getPosition();
+        
+        poseStack.pushPose();
+        poseStack.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
+        
+        AABB box = currentTarget.getBoundingBox().inflate(0.1);
+        var buffer = mc.renderBuffers().bufferSource();
+        net.minecraft.client.renderer.LevelRenderer.renderLineBox(
+            poseStack,
+            buffer.getBuffer(net.minecraft.client.renderer.RenderType.lines()),
+            box,
+            1.0f, 0.0f, 0.0f, 0.6f  // Red with 60% opacity
+        );
+        buffer.endBatch();
+        
+        poseStack.popPose();
     }
 }
