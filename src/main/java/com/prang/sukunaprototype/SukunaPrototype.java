@@ -66,6 +66,36 @@ public class SukunaPrototype {
     public static final GameRules.Key<GameRules.IntegerValue> DAMAGE_METER_DURATION =
             GameRules.register("sukunaprototype:damageMeterDuration", GameRules.Category.MISC, GameRules.IntegerValue.create(5));
 
+    // Enable particle burst effect when slash hits entities. Default true.
+    // Spawns 10-20 particles at impact point for visual feedback.
+    public static final GameRules.Key<GameRules.BooleanValue> HIT_PARTICLE_BURST =
+            GameRules.register("sukunaprototype:hitParticleBurst", GameRules.Category.MISC, GameRules.BooleanValue.create(true));
+
+    // Enable spark trail effect along slash path when hitting entities. Default true.
+    // Spawns flame/spark particles along the slash trajectory for enhanced visual feedback.
+    public static final GameRules.Key<GameRules.BooleanValue> HIT_SPARKS =
+            GameRules.register("sukunaprototype:hitSparks", GameRules.Category.MISC, GameRules.BooleanValue.create(true));
+
+    // Enable enhanced visual effect for critical hits (damage > 10 hearts). Default true.
+    // Spawns intense particle burst and plays sound when high damage is dealt.
+    public static final GameRules.Key<GameRules.BooleanValue> CRITICAL_HIT_EFFECT =
+            GameRules.register("sukunaprototype:criticalHitEffect", GameRules.Category.MISC, GameRules.BooleanValue.create(true));
+
+    // Enable screen shake effect when slash hits entities. Default true.
+    // Intensity scales with damage dealt (0.1-0.5 blocks camera offset).
+    public static final GameRules.Key<GameRules.BooleanValue> HIT_SCREEN_SHAKE =
+            GameRules.register("sukunaprototype:hitScreenShake", GameRules.Category.MISC, GameRules.BooleanValue.create(true));
+
+    // Enable red flash overlay effect on hit entities. Default true.
+    // Struck entities glow red for 5-10 ticks for clear hit feedback.
+    public static final GameRules.Key<GameRules.BooleanValue> HIT_FLASH =
+            GameRules.register("sukunaprototype:hitFlash", GameRules.Category.MISC, GameRules.BooleanValue.create(true));
+
+    // Enable Cleave Auto-Adjust ability. Default true.
+    // Cleave scales damage based on target's max health and armor.
+    public static final GameRules.Key<GameRules.BooleanValue> CLEAVE_ENABLED =
+            GameRules.register("sukunaprototype:cleaveEnabled", GameRules.Category.MISC, GameRules.BooleanValue.create(true));
+
     // The constructor for the mod class is the first code that is run when your mod is loaded.
     // FML will recognize some parameter types like IEventBus or ModContainer and pass them in automatically.
     public SukunaPrototype(IEventBus modEventBus, ModContainer modContainer) {

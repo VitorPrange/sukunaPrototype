@@ -37,6 +37,7 @@ import java.util.Random;
 @EventBusSubscriber(modid = SukunaPrototype.MODID, value = Dist.CLIENT)
 public class SukunaPrototypeClient {
     public static KeyMapping SLASH_KEY;
+    public static KeyMapping CLEAVE_KEY;
     private static final Logger LOGGER = LoggerFactory.getLogger("SukunaPrototypeSlash");
     private static final Random RANDOM = new Random();
 
@@ -90,7 +91,16 @@ public class SukunaPrototypeClient {
         );
         event.register(SLASH_KEY);
 
-        LOGGER.info("[SlashVFX] Key bindings registered: X=Random All (tap) / hold to ramp");
+        CLEAVE_KEY = new KeyMapping(
+            "key.sukunaprototype.cleave",
+            KeyConflictContext.IN_GAME,
+            InputConstants.Type.KEYSYM,
+            InputConstants.KEY_C,
+            "key.categories.sukunaprototype"
+        );
+        event.register(CLEAVE_KEY);
+
+        LOGGER.info("[SlashVFX] Key bindings registered: X=Slash (tap/hold) | C=Cleave");
     }
 
     // Detect key release on focus loss / Esc / alt-tab by tracking previous state in Pre tick
@@ -133,6 +143,49 @@ public class SukunaPrototypeClient {
                 com.prang.sukunaprototype.client.debug.VFXDebugRenderer.toggle();
                 return;
             }
+        }
+        
+        // Cleave Auto-Adjust handler (C key by default)
+        if (CLEAVE_KEY.isDown()) {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.player == null || mc.level == null) return;
+            
+            // Check if Cleave is enabled via gamerule
+            if (!mc.level.getGameRules().getBoolean(SukunaPrototype.CLEAVE_ENABLED)) {
+                return;
+            }
+            
+            // Find target using existing soft-lock targeting
+            Entity target = findSoftTarget(mc, SOFT_LOCK_RANGE, SOFT_LOCK_TOLERANCE);
+            if (target == null || !(target instanceof net.minecraft.world.entity.LivingEntity)) {
+                return;
+            }
+            
+            net.minecraft.world.entity.LivingEntity livingTarget = (net.minecraft.world.entity.LivingEntity) target;
+            
+            // Calculate Cleave damage: baseDamage + (maxHealth * healthScaling) + (armor * armorScaling)
+            float baseDamage = Config.CLEAVE_BASE_DAMAGE.get().floatValue();
+            float healthScaling = Config.CLEAVE_HEALTH_SCALING.get().floatValue();
+            float armorScaling = Config.CLEAVE_ARMOR_SCALING.get().floatValue();
+            
+            float targetMaxHealth = livingTarget.getMaxHealth();
+            float targetArmor = livingTarget.getArmorValue();
+            
+            float cleaveDamage = baseDamage + (targetMaxHealth * healthScaling) + (targetArmor * armorScaling);
+            
+            LOGGER.info("[Cleave] Target: {} | MaxHP: {} | Armor: {} | Calculated Damage: {} hearts",
+                livingTarget.getName().getString(), targetMaxHealth, targetArmor, cleaveDamage);
+            
+            // Spawn Cleave slash with calculated damage using builder pattern
+            SlashEffect.builder()
+                .at(livingTarget)
+                .colors(SlashEffect.BLACK_RED)  // Red/black color for Cleave distinction
+                .damage(cleaveDamage)
+                .spawn();
+            
+            LOGGER.info("[Cleave] Slash spawned with {} hearts damage", cleaveDamage);
+            
+            return;  // Prevent SLASH_KEY from also firing
         }
         
         if (!SLASH_KEY.isDown()) return;              // respects the key bound in Controls

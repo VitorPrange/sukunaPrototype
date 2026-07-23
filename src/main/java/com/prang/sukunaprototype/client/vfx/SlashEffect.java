@@ -400,6 +400,54 @@ public class SlashEffect extends VFXInstance {
         // (server is authoritative, but this prevents visual double-hit if packet is re-sent)
         for (LivingEntity target : targets) {
             hitEntities.add(target.getUUID());
+            
+            // Spawn hit particle burst if enabled by gamerule
+            if (level.getGameRules().getBoolean(SukunaPrototype.HIT_PARTICLE_BURST)) {
+                Vec3 targetPos = target.position().add(0, target.getBbHeight() / 2, 0);
+                // Spawn 15 crit particles in a burst around impact point
+                for (int i = 0; i < 15; i++) {
+                    double offsetX = (level.random.nextDouble() - 0.5) * 0.5;
+                    double offsetY = (level.random.nextDouble() - 0.5) * 0.5;
+                    double offsetZ = (level.random.nextDouble() - 0.5) * 0.5;
+                    level.addParticle(net.minecraft.core.particles.ParticleTypes.CRIT,
+                        targetPos.x + offsetX, targetPos.y + offsetY, targetPos.z + offsetZ,
+                        offsetX * 0.1, offsetY * 0.1, offsetZ * 0.1);
+                }
+            }
+            
+            // Spawn spark trail along slash path if enabled by gamerule
+            if (level.getGameRules().getBoolean(SukunaPrototype.HIT_SPARKS)) {
+                Vec3 targetPos = target.position().add(0, target.getBbHeight() / 2, 0);
+                Vec3 toTarget = targetPos.subtract(renderPos).normalize();
+                // Spawn flame particles along the slash trajectory toward target
+                for (int i = 0; i < 8; i++) {
+                    double progress = i / 8.0;
+                    Vec3 sparkPos = renderPos.add(toTarget.scale(progress * length * 0.8));
+                    level.addParticle(net.minecraft.core.particles.ParticleTypes.FLAME,
+                        sparkPos.x, sparkPos.y, sparkPos.z,
+                        0, 0, 0);
+                }
+            }
+        }
+        
+        // Spawn enhanced critical hit effect if damage exceeds threshold
+        if (damage > 10.0f && level.getGameRules().getBoolean(SukunaPrototype.CRITICAL_HIT_EFFECT)) {
+            // Spawn intense particle burst at slash center
+            Vec3 slashCenter = renderPos.add(new Vec3(lengthDir.x, lengthDir.y, lengthDir.z).scale(length * 0.5));
+            for (int i = 0; i < 40; i++) {
+                double offsetX = (level.random.nextDouble() - 0.5) * 1.0;
+                double offsetY = (level.random.nextDouble() - 0.5) * 1.0;
+                double offsetZ = (level.random.nextDouble() - 0.5) * 1.0;
+                double speed = 0.3;
+                level.addParticle(net.minecraft.core.particles.ParticleTypes.EXPLOSION_EMITTER,
+                    slashCenter.x + offsetX, slashCenter.y + offsetY, slashCenter.z + offsetZ,
+                    offsetX * speed, offsetY * speed, offsetZ * speed);
+            }
+            // Play critical hit sound
+            level.playLocalSound(renderPos.x, renderPos.y, renderPos.z,
+                net.minecraft.sounds.SoundEvents.GENERIC_EXPLODE.value(),
+                net.minecraft.sounds.SoundSource.PLAYERS,
+                0.5f, 1.5f, false);
         }
     }
 

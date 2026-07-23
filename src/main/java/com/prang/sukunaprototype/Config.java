@@ -69,6 +69,20 @@ public class Config {
             .comment("Vertical offset in pixels from anchor position (can be negative)")
             .defineInRange("damageMeterYOffset", 0, -1000, 1000);
 
+    // --- Cleave Auto-Adjust Configuration ---
+    
+    public static final ModConfigSpec.DoubleValue CLEAVE_BASE_DAMAGE = BUILDER
+            .comment("Base damage for Cleave ability in hearts (default 4.0)")
+            .defineInRange("cleaveBaseDamage", 4.0, 0.0, 100.0);
+    
+    public static final ModConfigSpec.DoubleValue CLEAVE_HEALTH_SCALING = BUILDER
+            .comment("Damage scaling per target max health (default 0.1 = 10% of max HP)")
+            .defineInRange("cleaveHealthScaling", 0.1, 0.0, 1.0);
+    
+    public static final ModConfigSpec.DoubleValue CLEAVE_ARMOR_SCALING = BUILDER
+            .comment("Damage scaling per target armor point (default 0.05)")
+            .defineInRange("cleaveArmorScaling", 0.05, 0.0, 1.0);
+
     static final ModConfigSpec SPEC = BUILDER.build();
     
     /**
